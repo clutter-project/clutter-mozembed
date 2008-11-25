@@ -62,6 +62,8 @@ main (int argc, char **argv)
                            "http://news.google.co.uk/");
   
   clutter_actor_show_all (stage);
+
+  clutter_stage_set_key_focus (CLUTTER_STAGE (stage), mozembed);
   
   clutter_main ();
   

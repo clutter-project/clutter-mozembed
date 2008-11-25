@@ -450,6 +450,26 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
 }
 
 static gboolean
+clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
+{
+  gchar *command = g_strdup_printf ("key-press %d", event->keyval);
+  send_command (CLUTTER_MOZEMBED (actor), command);
+  g_free (command);
+  
+  return TRUE;
+}
+
+static gboolean
+clutter_mozembed_key_release_event (ClutterActor *actor, ClutterKeyEvent *event)
+{
+  gchar *command = g_strdup_printf ("key-release %d", event->keyval);
+  send_command (CLUTTER_MOZEMBED (actor), command);
+  g_free (command);
+  
+  return TRUE;
+}
+
+static gboolean
 clutter_mozembed_scroll_event (ClutterActor *actor,
                                ClutterScrollEvent *event)
 {
@@ -513,6 +533,8 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
   actor_class->motion_event         = clutter_mozembed_motion_event;
   actor_class->button_press_event   = clutter_mozembed_button_press_event;
   actor_class->button_release_event = clutter_mozembed_button_release_event;
+  actor_class->key_press_event      = clutter_mozembed_key_press_event;
+  actor_class->key_release_event    = clutter_mozembed_key_release_event;
   actor_class->scroll_event         = clutter_mozembed_scroll_event;
 }
 

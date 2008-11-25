@@ -1,20 +1,25 @@
 
+MOZILLA_PREFIX ?= ${PWD}/../obj-i686-pc-linux-gnu/dist
+INCLUDES = -I${MOZILLA_PREFIX}/include -I${MOZILLA_PREFIX}/include/nspr -I${MOZILLA_PREFIX}/include/dom
+LIBS = -L${MOZILLA_PREFIX}/lib -lxpcomglue_s -lxul -lxpcom -lmozjs -lsoftokn3 -lsqlite3
+
 default: test-mozembed
 
 mozheadless: mozheadless.c
-	gcc -o mozheadless mozheadless.c -Wall -g `pkg-config --cflags --libs glib-2.0 sqlite3` -lxpcomglue_s -lxul -lxpcom -L/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/lib -I/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/include -I/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/include/nspr -lmozjs -lsoftokn3
+	gcc -o mozheadless mozheadless.c -Wall -g `pkg-config --cflags --libs glib-2.0` ${INCLUDES} ${LIBS}
 
 test-mozembed-working: test-mozembed.c clutter-mozembed-old.c
-	gcc -o test-mozembed clutter-mozembed-old.c test-mozembed.c -Wall -g `pkg-config --cflags --libs glib-2.0 clutter-0.8 sqlite3` -lxpcomglue_s -lxul -lxpcom -L/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/lib -I/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/include -I/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/include/nspr -lmozjs -lsoftokn3
+	gcc -o test-mozembed clutter-mozembed-old.c test-mozembed.c -Wall -g `pkg-config --cflags --libs glib-2.0 clutter-0.8` ${INCLUDES} ${LIBS}
 
 test-mozembed: test-mozembed.c clutter-mozembed.c mozheadless
-	gcc -o test-mozembed clutter-mozembed.c test-mozembed.c -Wall -g `pkg-config --cflags --libs glib-2.0 clutter-0.8 sqlite3` -lxpcomglue_s -lxul -lxpcom -L/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/lib -I/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/include -I/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/include/nspr -lmozjs -lsoftokn3
+	gcc -o test-mozembed clutter-mozembed.c test-mozembed.c -Wall -g `pkg-config --cflags --libs glib-2.0 clutter-0.8` ${INCLUDES} ${LIBS}
 
 run: test-mozembed
-	LD_LIBRARY_PATH=/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/lib MOZILLA_FIVE_HOME=/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/bin PATH=./:$(PATH) ./test-mozembed
+	LD_LIBRARY_PATH=${MOZILLA_PREFIX}/lib MOZILLA_FIVE_HOME=${MOZILLA_PREFIX}/bin PATH=./:${PATH} ./test-mozembed
 
 debug: test-mozembed
-	LD_LIBRARY_PATH=/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/lib MOZILLA_FIVE_HOME=/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/bin PATH=./:$(PATH) gdb --args ./test-mozembed
+	echo "Run the following:"
+	echo "LD_LIBRARY_PATH=${MOZILLA_PREFIX}/lib MOZILLA_FIVE_HOME=${MOZILLA_PREFIX}/bin PATH=./:${PATH} gdb --args ./test-mozembed"
 
 clean:
 	rm -f mozheadless test-mozembed

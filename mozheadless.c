@@ -39,7 +39,7 @@ static void
 updated_cb (MozHeadless *headless, gint x, gint y, gint width, gint height)
 {
   static gint n_missed_updates = 0;
-  gint i, doc_width, doc_height;
+  gint /*i, */doc_width, doc_height;
   gchar *feedback;
   
   if (waiting_for_ack)
@@ -227,6 +227,16 @@ process_command (gchar *command)
       b = atoi (params[2]);
       
       moz_headless_button_release (headless, x, y, b);
+    }
+  else if (strcmp (command, "key-press") == 0)
+    {
+      gint key = atoi (detail);
+      moz_headless_key_press (headless, (MozHeadlessKey)key);
+    }
+  else if (strcmp (command, "key-release") == 0)
+    {
+      gint key = atoi (detail);
+      moz_headless_key_release (headless, (MozHeadlessKey)key);
     }
   else if (strcmp (command, "quit") == 0)
     {
