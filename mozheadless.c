@@ -238,6 +238,18 @@ process_command (gchar *command)
       gint key = atoi (detail);
       moz_headless_key_release (headless, (MozHeadlessKey)key);
     }
+  else if (strcmp (command, "scroll") == 0)
+    {
+      gint x, y;
+      gchar *params[2];
+      if (!separate_strings (params, 2, detail))
+        return;
+      
+      x = atoi (params[0]);
+      y = atoi (params[1]);
+      
+      moz_headless_set_scroll_pos (headless, x, y);
+    }
   else if (strcmp (command, "quit") == 0)
     {
       g_main_loop_quit (mainloop);
