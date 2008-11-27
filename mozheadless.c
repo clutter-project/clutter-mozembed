@@ -35,11 +35,17 @@ send_feedback (const gchar *feedback)
   fflush (output);
 }
 
+static gboolean
+scroll_cb (MozHeadless *headless, gint dx, gint dy)
+{
+  return TRUE;
+}
+
 static void
 updated_cb (MozHeadless *headless, gint x, gint y, gint width, gint height)
 {
   static gint n_missed_updates = 0;
-  gint /*i, */doc_width, doc_height;
+  gint /*i, */doc_width, doc_height/*, sx, sy*/;
   gchar *feedback;
   
   if (waiting_for_ack)
@@ -92,8 +98,9 @@ updated_cb (MozHeadless *headless, gint x, gint y, gint width, gint height)
 
   msync (mmap_start, mmap_length, MS_SYNC);
 
+  /*moz_headless_get_scroll_pos (headless, &sx, &sy);*/
   feedback = g_strdup_printf ("update %d %d %d %d",
-                              x, y, width, height);
+                              x, y, width, height/*, sx, sy*/);
   send_feedback (feedback);
   g_free (feedback);
   
@@ -240,15 +247,15 @@ process_command (gchar *command)
     }
   else if (strcmp (command, "scroll") == 0)
     {
-      gint x, y;
+      gint dx, dy;
       gchar *params[2];
       if (!separate_strings (params, 2, detail))
         return;
       
-      x = atoi (params[0]);
-      y = atoi (params[1]);
+      dx = atoi (params[0]);
+      dy = atoi (params[1]);
       
-      moz_headless_set_scroll_pos (headless, x, y);
+      moz_headless_scroll (headless, dx, dy);
     }
   else if (strcmp (command, "quit") == 0)
     {
@@ -313,9 +320,9 @@ main (int argc, char **argv)
 {
   g_type_init ();
   
-  if (argc != 2)
+  if (argc != 3)
     {
-      printf ("Usage: %s <named pipe>\n", argv[0]);
+      printf ("Usage: %s <named pipe> <shm name>\n", argv[0]);
       return 1;
     }
   
@@ -335,7 +342,7 @@ main (int argc, char **argv)
                   (GIOFunc)input_io_func,
                   NULL);
   
-  shm_fd = shm_open ("/mozheadless", O_CREAT | O_RDWR | O_TRUNC, 0666);
+  shm_fd = shm_open (argv[2], O_CREAT | O_RDWR | O_TRUNC, 0666);
   if (shm_fd == -1)
     g_error ("Error opening shared memory");
   
@@ -343,8 +350,11 @@ main (int argc, char **argv)
   
   /* Remove scrollbars */
   /*moz_headless_set_chrome_mask (headless, 0);*/
+
   /*moz_headless_set_surface_offset (headless, 50, 50);*/
   
+  g_signal_connect (headless, "scroll",
+                    G_CALLBACK (scroll_cb), NULL);
   g_signal_connect (headless, "updated",
                     G_CALLBACK (updated_cb), NULL);
 

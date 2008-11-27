@@ -24,10 +24,20 @@ struct _ClutterMozEmbedPrivate
   gint             motion_x;
   gint             motion_y;
   
-  ClutterActor    *texture;
+  ClutterActor    *textures[4];
+  
+  /* Scroll coordinates for local textures */
+  gint             sx;
+  gint             sy;
+  
+  gchar           *shm_name;
   gboolean         opened_shm;
   gboolean         new_data;
   int              shm_fd;
+  
+  /* Scroll coordinates for the back-end */
+  gint             hsx;
+  gint             hsy;
   
   void            *image_data;
   int              image_size;
@@ -59,42 +69,127 @@ static void
 update (ClutterMozEmbed *self, gint x, gint y, gint width, gint height)
 {
   ClutterMozEmbedPrivate *priv = self->priv;
-  ClutterTexture *texture = CLUTTER_TEXTURE (priv->texture);
-  gint surface_width, surface_height;
+  guint surface_width, surface_height, i;
   
   if (!priv->opened_shm)
     {
-      /*g_debug ("Opening shm");*/
+      g_debug ("Opening shm");
       priv->opened_shm = TRUE;
-      priv->shm_fd = shm_open ("/mozheadless", O_RDONLY, 0444);
+      priv->shm_fd = shm_open (priv->shm_name, O_RDONLY, 0444);
       if (priv->shm_fd == -1)
         g_error ("Error opening shared memory");
     }
   
-  clutter_texture_get_base_size (texture, &surface_width, &surface_height);
+  clutter_actor_get_size (CLUTTER_ACTOR (self),
+                          &surface_width, &surface_height);
   
   if (!priv->image_data)
     {
-      /*g_debug ("mmapping data");*/
+      g_debug ("mmapping data");
       priv->image_size = surface_width * surface_height * 4;
       priv->image_data = mmap (NULL, priv->image_size, PROT_READ,
                                MAP_SHARED, priv->shm_fd, 0);
     }
   
   /*g_debug ("Reading data");*/
-  clutter_texture_set_area_from_rgb_data (texture,
-                                          priv->image_data +
-                                          (x * 4) +
-                                          (y * surface_width * 4),
-                                          TRUE,
-                                          x,
-                                          y,
-                                          width,
-                                          height,
-                                          surface_width * 4,
-                                          4,
-                                          CLUTTER_TEXTURE_RGB_FLAG_BGR,
-                                          NULL);
+  for (i = 0; i < 4; i++)
+    {
+      gint dx, dy, dw, dh;
+      GError *error = NULL;
+      
+      if (!priv->textures[i])
+        continue;
+      
+      dw = surface_width;
+      dh = surface_height;
+      
+      /* Calculate the rectangle of the texture patch */
+      switch (i)
+        {
+        /* top-left */
+        case 0:
+          dx = priv->sx;
+          dy = priv->sy;
+          break;
+        
+        /* top-right */
+        case 1:
+          dx = surface_width + priv->sx;
+          dy = priv->sy;
+          break;
+        
+        /* bottom-left */
+        case 2:
+          dx = priv->sx;
+          dy = surface_height + priv->sy;
+          break;
+        
+        /* bottom-right */
+        case 3:
+          dx = surface_width + priv->sx;
+          dy = surface_height + priv->sy;
+          break;
+        }
+      
+      /* If the rectangle intersects with the updated rectangle, copy the
+       * intersection to the texture.
+       */
+      if ((dx < x + width) &&
+          (dy < y + height) &&
+          (dx + dw > x) &&
+          (dy + dh > y))
+        {
+          gint src_x, src_y, dst_x, dst_y, dst_width, dst_height;
+          
+          if (dx >= x)
+            {
+              src_x = x - dx;
+              dst_x = 0;
+              dst_width = MIN (dw, (x + width) - dx);
+            }
+          else
+            {
+              src_x = 0;
+              dst_x = x - dx;
+              dst_width = MIN (dw - dst_x, width);
+            }
+          if (dy >= y)
+            {
+              src_y = y - dy;
+              dst_y = 0;
+              dst_height = MIN (dh, (y + height) - dy);
+            }
+          else
+            {
+              src_y = 0;
+              dst_y = y - dy;
+              dst_height = MIN (dh - dst_y, height);
+            }
+          
+          /*g_debug ("Copying from %d,%d (%dx%d) to %d,%d %dx%d (%d)",
+                   src_x, src_y, surface_width, surface_height,
+                   dst_x, dst_y, dst_width, dst_height, i);*/
+          
+          if (!clutter_texture_set_area_from_rgb_data (
+                                           CLUTTER_TEXTURE (priv->textures[i]),
+                                           priv->image_data +
+                                           ((src_x+x)*4) +
+                                           ((src_y+y)*surface_width*4),
+                                           TRUE,
+                                           dst_x,
+                                           dst_y,
+                                           dst_width,
+                                           dst_height,
+                                           surface_width*4,
+                                           4,
+                                           CLUTTER_TEXTURE_RGB_FLAG_BGR,
+                                           &error))
+            {
+              g_warning ("Error setting texture data: %s", error->message);
+              g_error_free (error);
+            }
+        }
+    }
 }
 
 static void
@@ -103,6 +198,8 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
   gchar *detail;
   
   ClutterMozEmbedPrivate *priv = self->priv;
+  
+  /*g_debug ("Processing feedback: %s", command);*/
   
   detail = strchr (command, ' ');
   if (detail)
@@ -115,7 +212,7 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
     {
       gint x, y, width, height;
       
-      gchar *params[4];
+      gchar *params[6];
       if (!separate_strings (params, 4, detail))
         return;
       
@@ -194,6 +291,8 @@ send_command (ClutterMozEmbed *mozembed, const gchar *command)
     return;
   }
   
+  /*g_debug ("Sending command: %s", command);*/
+  
   fwrite (command, strlen (command) + 1, 1, mozembed->priv->output);
   fflush (mozembed->priv->output);
 }
@@ -229,36 +328,13 @@ clutter_mozembed_finalize (GObject *object)
 {
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
   
+  if (priv->shm_name)
+    g_free (priv->shm_name);
+  
   if (priv->image_data)
     munmap (priv->image_data, priv->image_size);
   
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->finalize (object);
-}
-
-static void
-clutter_mozembed_get_preferred_width (ClutterActor *actor,
-                                      ClutterUnit   for_height,
-                                      ClutterUnit  *min_width_p,
-                                      ClutterUnit  *natural_width_p)
-{
-  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (actor)->priv;
-  clutter_actor_get_preferred_width (priv->texture,
-                                     for_height,
-                                     min_width_p,
-                                     natural_width_p);
-}
-
-static void
-clutter_mozembed_get_preferred_height (ClutterActor *actor,
-                                       ClutterUnit   for_width,
-                                       ClutterUnit  *min_height_p,
-                                       ClutterUnit  *natural_height_p)
-{
-  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (actor)->priv;
-  clutter_actor_get_preferred_height (priv->texture,
-                                      for_width,
-                                      min_height_p,
-                                      natural_height_p);
 }
 
 static void
@@ -267,37 +343,40 @@ clutter_mozembed_allocate (ClutterActor          *actor,
                            gboolean               absolute_origin_changed)
 {
   gchar *command;
-  gint width, height, tex_width, tex_height;
   ClutterActorBox child_box;
+  gint width, height, tex_width, tex_height, i;
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (actor)->priv;
+
+  width = CLUTTER_UNITS_TO_INT (box->x2 - box->x1);
+  height = CLUTTER_UNITS_TO_INT (box->y2 - box->y1);
+  
+  if (priv->textures[0])
+    clutter_texture_get_base_size (CLUTTER_TEXTURE (priv->textures[0]),
+                                   &tex_width, &tex_height);
+  
+  if ((!priv->textures[0]) || (tex_width != width) || (tex_height != height))
+    {
+      const guchar *data = g_malloc (width * height * 4);
+      for (i = 0; i < 4; i++)
+        {
+          if (priv->textures[i])
+            clutter_actor_unparent (priv->textures[i]);
+          priv->textures[i] =
+            g_object_new (CLUTTER_TYPE_TEXTURE, "visible", TRUE, NULL);
+          clutter_texture_set_from_rgb_data (CLUTTER_TEXTURE (priv->textures[i]),
+                                             data, TRUE, width, height,
+                                             width * 4, 4, 0, NULL);
+          clutter_actor_set_parent (priv->textures[i], actor);
+        }
+    }
   
   child_box.x1 = 0;
   child_box.y1 = 0;
   child_box.x2 = box->x2 - box->x1;
   child_box.y2 = box->y2 - box->y1;
-  
-  clutter_actor_allocate (priv->texture, &child_box, absolute_origin_changed);
-
-  width = CLUTTER_UNITS_TO_INT (child_box.x2);
-  height = CLUTTER_UNITS_TO_INT (child_box.y2);
-  
-  clutter_texture_get_base_size (CLUTTER_TEXTURE (priv->texture),
-                                 &tex_width, &tex_height);
-  
-  if ((tex_width != width) || (tex_height != height))
-    {
-      guchar *data = g_slice_alloc (width * height * 4);
-      clutter_texture_set_from_rgb_data (CLUTTER_TEXTURE (priv->texture),
-                                         data,
-                                         TRUE,
-                                         width,
-                                         height,
-                                         width * 4,
-                                         4,
-                                         CLUTTER_TEXTURE_RGB_FLAG_BGR,
-                                         NULL);
-      g_slice_free1 (width * height * 4, data);
-    }
+  for (i = 0; i < 4; i++)
+    clutter_actor_allocate (priv->textures[i], &child_box,
+                            absolute_origin_changed);
   
   if (priv->image_data)
     {
@@ -319,7 +398,26 @@ clutter_mozembed_paint (ClutterActor *actor)
   ClutterMozEmbed *self = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = self->priv;
   
-  clutter_actor_paint (priv->texture);
+  if (priv->textures[0])
+    {
+      gint width = cogl_texture_get_width (priv->textures[0]);
+      gint height = cogl_texture_get_height (priv->textures[0]);
+      ClutterFixed widthx = CLUTTER_INT_TO_FIXED (width);
+      ClutterFixed heightx = CLUTTER_INT_TO_FIXED (height);
+
+      cogl_clip_set (0, 0, widthx, heightx);
+      cogl_translate (priv->sx, priv->sy, 0);
+      
+      clutter_actor_paint (priv->textures[0]);
+      cogl_translate (width, 0, 0);
+      clutter_actor_paint (priv->textures[1]);
+      cogl_translate (-width, height, 0);
+      clutter_actor_paint (priv->textures[2]);
+      cogl_translate (width, 0, 0);
+      clutter_actor_paint (priv->textures[3]);
+
+      cogl_clip_unset ();
+    }
   
   if (priv->new_data)
     {
@@ -331,7 +429,11 @@ clutter_mozembed_paint (ClutterActor *actor)
 static void
 clutter_mozembed_pick (ClutterActor *actor, const ClutterColor *color)
 {
-  clutter_mozembed_paint (actor);
+  guint width, height;
+  
+  cogl_color (color);
+  clutter_actor_get_size (actor, &width, &height);
+  cogl_rectangle (0, 0, width, height);
 }
 
 static gboolean
@@ -525,8 +627,6 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
   object_class->dispose = clutter_mozembed_dispose;
   object_class->finalize = clutter_mozembed_finalize;
   
-  actor_class->get_preferred_width  = clutter_mozembed_get_preferred_width;
-  actor_class->get_preferred_height = clutter_mozembed_get_preferred_height;
   actor_class->allocate             = clutter_mozembed_allocate;
   actor_class->paint                = clutter_mozembed_paint;
   actor_class->pick                 = clutter_mozembed_pick;
@@ -541,13 +641,14 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
 static void
 clutter_mozembed_init (ClutterMozEmbed *self)
 {
+  static gint spawned_windows = 0;
   gint standard_input;
   gboolean success;
 
   gchar *argv[] = {
     "mozheadless",
-    /* FIXME: We need to dynamically generate a name in /tmp or something */
-    "./mozheadless-pipe",
+    NULL, /* Pipe file */
+    NULL, /* SHM name */
     NULL
   };
 
@@ -557,18 +658,17 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   
   priv->motion_ack = TRUE;
 
-  priv->texture = clutter_texture_new ();
-  clutter_actor_show (priv->texture);
-  clutter_actor_set_parent (priv->texture, CLUTTER_ACTOR (self));
-  
   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
-  clutter_actor_set_reactive (priv->texture, TRUE);
   
   /* Set up out-of-process renderer */
   
+  /* Generate names for pipe/shm */
+  argv[1] = g_strdup_printf ("./%d-%d", getpid (), spawned_windows);
+  argv[2] = priv->shm_name = g_strdup_printf ("/mozheadless-%d",
+                                              spawned_windows++);
+  
   /* Create named pipe */
   mkfifo (argv[1], S_IRUSR | S_IWUSR);
-  /*mknod (argv[1], S_IRUSR | S_IWUSR | S_IFIFO, 0);*/
   
   /* Spawn renderer */
   success = g_spawn_async_with_pipes (NULL,
@@ -602,6 +702,8 @@ clutter_mozembed_init (ClutterMozEmbed *self)
                   (GIOFunc)input_io_func,
                   self);
 
+  g_free (argv[1]);
+  
   /* Open up standard input */
   priv->output = fdopen (standard_input, "w");
 }
