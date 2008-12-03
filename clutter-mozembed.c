@@ -552,23 +552,58 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
 }
 
 static gboolean
-clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
+clutter_mozembed_get_keyval (ClutterKeyEvent *event, guint *keyval)
 {
-  gchar *command = g_strdup_printf ("key-press %d", event->keyval);
-  send_command (CLUTTER_MOZEMBED (actor), command);
-  g_free (command);
+  *keyval = event->unicode_value;
+  
+  if (g_unichar_isprint (*keyval))
+    return TRUE;
+
+  switch (event->keyval)
+    {
+    case CLUTTER_Return :
+      *keyval = MOZ_KEY_RETURN;
+      break;
+    case CLUTTER_BackSpace :
+      *keyval = MOZ_KEY_BACK_SPACE;
+      break;
+    default :
+      return FALSE;
+    }
   
   return TRUE;
 }
 
 static gboolean
+clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
+{
+  guint keyval;
+  
+  if (clutter_mozembed_get_keyval (event, &keyval))
+    {
+      gchar *command = g_strdup_printf ("key-press %d", keyval);
+      send_command (CLUTTER_MOZEMBED (actor), command);
+      g_free (command);
+      return TRUE;
+    }
+  
+  return FALSE;
+}
+
+static gboolean
 clutter_mozembed_key_release_event (ClutterActor *actor, ClutterKeyEvent *event)
 {
-  gchar *command = g_strdup_printf ("key-release %d", event->keyval);
-  send_command (CLUTTER_MOZEMBED (actor), command);
-  g_free (command);
+  guint keyval;
   
-  return TRUE;
+  if (clutter_mozembed_get_keyval (event, &keyval))
+    {
+      gchar *command = g_strdup_printf ("key-release %d", keyval);
+      send_command (CLUTTER_MOZEMBED (actor), command);
+      g_free (command);
+      return TRUE;
+    }
+  
+  return FALSE;
 }
 
 static gboolean
