@@ -35,6 +35,60 @@ send_feedback (const gchar *feedback)
   fflush (output);
 }
 
+static void
+location_cb (MozHeadless *headless)
+{
+  gchar *location, *feedback;
+  
+  location = moz_headless_get_location (headless);
+  feedback = g_strdup_printf ("location %s", location);
+  
+  send_feedback (feedback);
+  
+  g_free (feedback);
+  g_free (location);
+}
+
+static void
+title_cb (MozHeadless *headless)
+{
+  gchar *title, *feedback;
+  
+  title = moz_headless_get_title (headless);
+  feedback = g_strdup_printf ("title %s", title);
+  
+  send_feedback (feedback);
+  
+  g_free (feedback);
+  g_free (title);
+}
+
+static void
+progress_cb (MozHeadless *headless, gint curprogress, gint maxprogress)
+{
+  gchar *feedback;
+  gdouble progress;
+  
+  progress = curprogress / (gdouble)maxprogress;
+  feedback = g_strdup_printf ("progress %lf", progress);
+  
+  send_feedback (feedback);
+  
+  g_free (feedback);
+}
+
+static void
+net_start_cb (MozHeadless *headless)
+{
+  send_feedback ("net-start");
+}
+
+static void
+net_stop_cb (MozHeadless *headless)
+{
+  send_feedback ("net-stop");
+}
+
 static gboolean
 scroll_cb (MozHeadless *headless, gint dx, gint dy)
 {
@@ -353,6 +407,16 @@ main (int argc, char **argv)
 
   /*moz_headless_set_surface_offset (headless, 50, 50);*/
   
+  g_signal_connect (headless, "location",
+                    G_CALLBACK (location_cb), NULL);
+  g_signal_connect (headless, "title",
+                    G_CALLBACK (title_cb), NULL);
+  g_signal_connect (headless, "progress",
+                    G_CALLBACK (progress_cb), NULL);
+  g_signal_connect (headless, "net-start",
+                    G_CALLBACK (net_start_cb), NULL);
+  g_signal_connect (headless, "net-stop",
+                    G_CALLBACK (net_stop_cb), NULL);
   g_signal_connect (headless, "scroll",
                     G_CALLBACK (scroll_cb), NULL);
   g_signal_connect (headless, "updated",

@@ -13,6 +13,24 @@ G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_TYPE_ACTOR)
 #define MOZEMBED_PRIVATE(o) \
   (G_TYPE_INSTANCE_GET_PRIVATE ((o), CLUTTER_TYPE_MOZEMBED, ClutterMozEmbedPrivate))
 
+enum
+{
+  PROP_0,
+ 
+  PROP_LOCATION,
+  PROP_TITLE,
+};
+
+enum
+{
+  PROGRESS,
+  NET_START,
+  NET_STOP,
+  
+  LAST_SIGNAL
+};
+
+static guint signals[LAST_SIGNAL] = { 0, };
 
 struct _ClutterMozEmbedPrivate
 {
@@ -25,6 +43,10 @@ struct _ClutterMozEmbedPrivate
   gint             motion_y;
   
   ClutterActor    *textures[4];
+  
+  /* Locally cached properties */
+  gchar           *location;
+  gchar           *title;
   
   /* Scroll coordinates for local textures */
   gint             sx;
@@ -208,12 +230,12 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       detail++;
     }
 
-  if (strcmp (command, "update") == 0)
+  if (g_str_equal (command, "update"))
     {
       gint x, y, width, height;
       
-      gchar *params[6];
-      if (!separate_strings (params, 4, detail))
+      gchar *params[4];
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
       x = atoi (params[0]);
@@ -227,9 +249,52 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       
       clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
     }
-  else if (strcmp (command, "mack") == 0)
+  else if (g_str_equal (command, "mack"))
     {
       priv->motion_ack = TRUE;
+    }
+  else if (g_str_equal (command, "progress"))
+    {
+      gdouble progress;
+      
+      gchar *params[1];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+      
+      progress = atof (params[0]);
+      
+      g_signal_emit (self, signals[PROGRESS], 0, progress);
+    }
+  else if (g_str_equal (command, "location"))
+    {
+      g_free (priv->location);
+      priv->location = NULL;
+      
+      if (!detail)
+        return;
+      
+      priv->location = g_strdup (detail);
+      g_object_notify (G_OBJECT (self), "location");
+    }
+  else if (g_str_equal (command, "title"))
+    {
+      g_free (priv->title);
+      priv->title = NULL;
+      
+      if (!detail)
+        return;
+      
+      priv->title = g_strdup (detail);
+      g_object_notify (G_OBJECT (self), "title");
+    }
+  else if (g_str_equal (command, "net-start"))
+    {
+      g_signal_emit (self, signals[NET_START], 0);
+    }
+  else if (g_str_equal (command, "net-stop"))
+    {
+      g_signal_emit (self, signals[NET_STOP], 0);
     }
   else
     {
@@ -301,7 +366,17 @@ static void
 clutter_mozembed_get_property (GObject *object, guint property_id,
                               GValue *value, GParamSpec *pspec)
 {
+  ClutterMozEmbed *self = CLUTTER_MOZEMBED (object);
+  
   switch (property_id) {
+  case PROP_LOCATION :
+    g_value_set_string (value, clutter_mozembed_get_location (self));
+    break;
+
+  case PROP_TITLE :
+    g_value_set_string (value, clutter_mozembed_get_title (self));
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -671,6 +746,55 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
   actor_class->key_press_event      = clutter_mozembed_key_press_event;
   actor_class->key_release_event    = clutter_mozembed_key_release_event;
   actor_class->scroll_event         = clutter_mozembed_scroll_event;
+
+  g_object_class_install_property (object_class,
+                                   PROP_LOCATION,
+                                   g_param_spec_string ("location",
+                                                        "Location",
+                                                        "Current URL.",
+                                                        "about:blank",
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_NICK |
+                                                        G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_TITLE,
+                                   g_param_spec_string ("title",
+                                                        "Title",
+                                                        "Current page title.",
+                                                        "",
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_NICK |
+                                                        G_PARAM_STATIC_BLURB));
+
+  signals[PROGRESS] =
+    g_signal_new ("progress",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, progress),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__DOUBLE,
+                  G_TYPE_NONE, 1, G_TYPE_DOUBLE);
+
+  signals[NET_START] =
+    g_signal_new ("net-start",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, net_start),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__VOID,
+                  G_TYPE_NONE, 0);
+
+  signals[NET_STOP] =
+    g_signal_new ("net-stop",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, net_stop),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__VOID,
+                  G_TYPE_NONE, 0);
 }
 
 static void
@@ -755,5 +879,19 @@ clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri)
   gchar *command = g_strdup_printf ("open %s", uri);
   send_command (mozembed, command);
   g_free (command);
+}
+
+const gchar *
+clutter_mozembed_get_location (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  return priv->location;
+}
+
+const gchar *
+clutter_mozembed_get_title (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  return priv->title;
 }
 

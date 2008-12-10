@@ -38,6 +38,11 @@ typedef struct {
 
 typedef struct {
   ClutterActorClass parent_class;
+  
+  /* Signals */
+  void (* progress)  (ClutterMozEmbed *mozembed, gdouble progress);
+  void (* net_start) (ClutterMozEmbed *mozembed);
+  void (* net_stop)  (ClutterMozEmbed *mozembed);
 } ClutterMozEmbedClass;
 
 GType clutter_mozembed_get_type (void);
@@ -45,6 +50,8 @@ GType clutter_mozembed_get_type (void);
 ClutterActor* clutter_mozembed_new (void);
 
 void clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri);
+const gchar *clutter_mozembed_get_location (ClutterMozEmbed *mozembed);
+const gchar *clutter_mozembed_get_title (ClutterMozEmbed *mozembed);
 
 G_END_DECLS
 

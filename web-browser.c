@@ -133,11 +133,8 @@ set_back_and_forward (MmBrowser *browser)
 #endif
 }
 
-#ifndef WITH_MOZILLA
 static void
-load_started_cb (WebKitWebView  *web_view,
-                 WebKitWebFrame *frame,
-                 MmBrowser      *browser)
+load_started_cb (MmBrowser      *browser)
 {
   MmBrowserPrivate *priv = browser->priv;
   ClutterTimeline *tl;
@@ -146,12 +143,19 @@ load_started_cb (WebKitWebView  *web_view,
   clutter_timeline_start (priv->move_timeline);
 }
 
+#ifdef WITH_MOZILLA
 static void
-load_finished_cb (WebKitWebView  *web_view,
+load_finished_cb (MmBrowser       *browser,
+                  ClutterMozEmbed *mozembed)
+#else
+static void
+load_finished_cb (MmBrowser      *browser,
                   WebKitWebFrame *frame,
-                  MmBrowser      *browser)
+                  WebKitWebView  *web_view)
+#endif
 {
   MmBrowserPrivate *priv = browser->priv;
+  const gchar *location;
   MmBrowserPage *page;
   ClutterTimeline *tl;
 
@@ -159,16 +163,20 @@ load_finished_cb (WebKitWebView  *web_view,
   clutter_timeline_stop (priv->move_timeline);
   clutter_timeline_rewind (priv->move_timeline);
 
-  clutter_entry_set_text (CLUTTER_ENTRY (priv->entry),
-                          webkit_web_frame_get_uri (frame));
+#ifdef WITH_MOZILLA
+  location = clutter_mozembed_get_location (mozembed);
+#else
+  location = webkit_web_frame_get_uri (frame);
+#endif
+
+  clutter_entry_set_text (CLUTTER_ENTRY (priv->entry), location);
   page = priv->current_page->data;
 
   g_free (page->address);
-  page->address = g_strdup (webkit_web_frame_get_uri (frame));
+  page->address = g_strdup (location);
 
   set_back_and_forward (browser);
 }
-#endif
 
 static gboolean
 web_event_capture_cb (ClutterActor  *actor,
@@ -395,6 +403,10 @@ add_new_page (MmBrowser *browser)
   page->scroll = page->web = clutter_mozembed_new ();
   clutter_actor_set_size (page->web, WEB_WIDTH, WEB_HEIGHT);
   clutter_mozembed_open (CLUTTER_MOZEMBED (page->web), "about:blank");
+  g_signal_connect_swapped (page->web, "net-start",
+                            G_CALLBACK (load_started_cb), browser);
+  g_signal_connect_swapped (page->web, "net-stop",
+                            G_CALLBACK (load_finished_cb), browser);
 #else
   page->hadj = webkit_adjustment_new (0,0,0,0,0,0);
   page->vadj = webkit_adjustment_new (0,0,0,0,0,0);
@@ -424,10 +436,10 @@ add_new_page (MmBrowser *browser)
   clutter_container_add_actor (CLUTTER_CONTAINER (page->scroll), frame);
 
   webkit_web_view_open (page->view, "about:blank");
-  g_signal_connect (page->view, "load-started",
-                    G_CALLBACK (load_started_cb), browser);
-  g_signal_connect (page->view, "load-finished",
-                    G_CALLBACK (load_finished_cb), browser);
+  g_signal_connect_swapped (page->view, "load-started",
+                            G_CALLBACK (load_started_cb), browser);
+  g_signal_connect_swapped (page->view, "load-finished",
+                            G_CALLBACK (load_finished_cb), browser);
   g_signal_connect (page->view, "hovering-over-link",
                     G_CALLBACK (hovering_over_link_cb), page);
   g_signal_connect (page->view, "start-editing",
