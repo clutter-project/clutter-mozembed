@@ -118,19 +118,25 @@ set_back_and_forward (MmBrowser *browser)
   /* Get top page */
   page = priv->current_page->data;
 
-#ifndef WITH_MOZILLA
+#ifdef WITH_MOZILLA
+  if (clutter_mozembed_can_go_back (CLUTTER_MOZEMBED (page->web))) {
+#else
   if (webkit_web_view_can_go_back (page->view)) {
+#endif
     clutter_effect_fade (priv->fade_template, priv->back, 0xff, NULL, NULL);
   } else {
     clutter_effect_fade (priv->fade_template, priv->back, 0x55, NULL, NULL);
   }
 
+#ifdef WITH_MOZILLA
+  if (clutter_mozembed_can_go_forward (CLUTTER_MOZEMBED (page->web))) {
+#else
   if (webkit_web_view_can_go_forward (page->view)) {
+#endif
     clutter_effect_fade (priv->fade_template, priv->forward, 0xff, NULL, NULL);
   } else {
     clutter_effect_fade (priv->fade_template, priv->forward, 0x55, NULL, NULL);
   }
-#endif
 }
 
 static void
@@ -523,6 +529,7 @@ back_cb (ClutterActor *button,
   /* Get top page */
   page = priv->current_page->data;
 #ifdef WITH_MOZILLA
+  clutter_mozembed_back (CLUTTER_MOZEMBED (page->web));
 #else
   webkit_web_view_go_back (page->view);
 #endif
@@ -543,6 +550,7 @@ forward_cb (ClutterActor *button,
   /* Get top page */
   page = priv->current_page->data;
 #ifdef WITH_MOZILLA
+  clutter_mozembed_forward (CLUTTER_MOZEMBED (page->web));
 #else
   webkit_web_view_go_forward (page->view);
 #endif

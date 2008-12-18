@@ -21,7 +21,6 @@ static GMainLoop *mainloop;
 static gboolean waiting_for_ack = FALSE;
 static gboolean missed_update = FALSE;
 static int shm_fd = -1;
-/*static void *shadow_buffer = NULL;*/
 static void *mmap_start = NULL;
 static size_t mmap_length = 0;
 
@@ -99,7 +98,7 @@ static void
 updated_cb (MozHeadless *headless, gint x, gint y, gint width, gint height)
 {
   static gint n_missed_updates = 0;
-  gint /*i, */doc_width, doc_height/*, sx, sy*/;
+  /*gint doc_width, doc_height, sx, sy*/;
   gchar *feedback;
   
   if (waiting_for_ack)
@@ -136,7 +135,7 @@ updated_cb (MozHeadless *headless, gint x, gint y, gint width, gint height)
     }
   
   /*g_debug ("Update +%d+%d %dx%d", x, y, width, height);*/
-  moz_headless_get_document_size (headless, &doc_width, &doc_height);
+  /*moz_headless_get_document_size (headless, &doc_width, &doc_height);*/
   /*g_debug ("Doc-size: %dx%d", doc_width, doc_height);*/
   
   missed_update = FALSE;
@@ -145,11 +144,6 @@ updated_cb (MozHeadless *headless, gint x, gint y, gint width, gint height)
     n_missed_updates = 0;
   }
   
-/*  for (i = 0; i < height; i++)
-    memcpy (mmap_start + (x*4) + ((y + i) * surface_width * 4),
-            shadow_buffer + (x*4) + ((y + i) * surface_width * 4),
-            width * 4);*/
-
   msync (mmap_start, mmap_length, MS_SYNC);
 
   /*moz_headless_get_scroll_pos (headless, &sx, &sy);*/
@@ -198,6 +192,10 @@ process_command (gchar *command)
   
   /*g_debug ("Command: %s", command);*/
   
+  /* TODO: Of course, we should make this a binary format - it's this way 
+   *       to ease debugging.
+   */
+  
   detail = strchr (command, ' ');
   if (detail)
     {
@@ -205,21 +203,19 @@ process_command (gchar *command)
       detail++;
     }
 
-  if (strcmp (command, "ack") == 0)
+  if (g_str_equal (command, "ack"))
     {
       waiting_for_ack = FALSE;
       moz_headless_freeze_updates (headless, FALSE);
-      /*if (missed_update)
-        updated_cb (headless, last_x, last_y, last_width, last_height);*/
     }
-  else if (strcmp (command, "open") == 0)
+  else if (g_str_equal (command, "open"))
     {
       moz_headless_load_url (headless, detail);
     }
-  else if (strcmp (command, "resize") == 0)
+  else if (g_str_equal (command, "resize"))
     {
       gchar *params[2];
-      if (!separate_strings (params, 2, detail))
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
       surface_width = atoi (params[0]);
@@ -229,27 +225,22 @@ process_command (gchar *command)
       moz_headless_set_size (headless, surface_width - 0, surface_height - 0);
       
       if (mmap_start)
-        {
-          munmap (mmap_start, mmap_length);
-          /*g_free (shadow_buffer);*/
-        }
+        munmap (mmap_start, mmap_length);
 
       mmap_length = surface_width * surface_height * 4;
       ftruncate (shm_fd, mmap_length);
       mmap_start = mmap (NULL, mmap_length, PROT_READ | PROT_WRITE,
                          MAP_SHARED, shm_fd, 0);
       
-      /*shadow_buffer = g_malloc (mmap_length);*/
-      
-      moz_headless_set_surface (headless, /*shadow_buffer*/mmap_start,
+      moz_headless_set_surface (headless, mmap_start,
                                 surface_width, surface_height,
                                 surface_width * 4);
     }
-  else if (strcmp (command, "motion") == 0)
+  else if (g_str_equal (command, "motion"))
     {
       gint x, y;
       gchar *params[2];
-      if (!separate_strings (params, 2, detail))
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
       x = atoi (params[0]);
@@ -262,11 +253,11 @@ process_command (gchar *command)
        */
       g_idle_add_full (G_PRIORITY_LOW, (GSourceFunc)send_mack, NULL, NULL);
     }
-  else if (strcmp (command, "button-press") == 0)
+  else if (g_str_equal (command, "button-press"))
     {
       gint x, y, b, c;
       gchar *params[4];
-      if (!separate_strings (params, 4, detail))
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
       x = atoi (params[0]);
@@ -276,11 +267,11 @@ process_command (gchar *command)
       
       moz_headless_button_press (headless, x, y, b, c);
     }
-  else if (strcmp (command, "button-release") == 0)
+  else if (g_str_equal (command, "button-release"))
     {
       gint x, y, b;
       gchar *params[3];
-      if (!separate_strings (params, 3, detail))
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
       x = atoi (params[0]);
@@ -289,21 +280,21 @@ process_command (gchar *command)
       
       moz_headless_button_release (headless, x, y, b);
     }
-  else if (strcmp (command, "key-press") == 0)
+  else if (g_str_equal (command, "key-press"))
     {
       gint key = atoi (detail);
       moz_headless_key_press (headless, (MozHeadlessKey)key);
     }
-  else if (strcmp (command, "key-release") == 0)
+  else if (g_str_equal (command, "key-release"))
     {
       gint key = atoi (detail);
       moz_headless_key_release (headless, (MozHeadlessKey)key);
     }
-  else if (strcmp (command, "scroll") == 0)
+  else if (g_str_equal (command, "scroll"))
     {
       gint dx, dy;
       gchar *params[2];
-      if (!separate_strings (params, 2, detail))
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
       dx = atoi (params[0]);
@@ -311,7 +302,29 @@ process_command (gchar *command)
       
       moz_headless_scroll (headless, dx, dy);
     }
-  else if (strcmp (command, "quit") == 0)
+  else if (g_str_equal (command, "can-go-back?"))
+    {
+      gchar *feedback =
+        g_strdup_printf ("back %d", moz_headless_can_go_back (headless));
+      send_feedback (feedback);
+      g_free (feedback);
+    }
+  else if (g_str_equal (command, "can-go-forward?"))
+    {
+      gchar *feedback =
+        g_strdup_printf ("forward %d", moz_headless_can_go_forward (headless));
+      send_feedback (feedback);
+      g_free (feedback);
+    }
+  else if (g_str_equal (command, "back"))
+    {
+      moz_headless_go_back (headless);
+    }
+  else if (g_str_equal (command, "forward"))
+    {
+      moz_headless_go_forward (headless);
+    }
+  else if (g_str_equal (command, "quit"))
     {
       g_main_loop_quit (mainloop);
     }

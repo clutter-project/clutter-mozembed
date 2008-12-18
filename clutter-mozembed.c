@@ -44,6 +44,11 @@ struct _ClutterMozEmbedPrivate
   
   ClutterActor    *textures[4];
   
+  /* Variables for synchronous calls */
+  const gchar     *sync_call;
+  gboolean         can_go_back;
+  gboolean         can_go_forward;
+  
   /* Locally cached properties */
   gchar           *location;
   gchar           *title;
@@ -229,6 +234,9 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       detail[0] = '\0';
       detail++;
     }
+  
+  if (priv->sync_call && g_str_equal (command, priv->sync_call))
+    priv->sync_call = NULL;
 
   if (g_str_equal (command, "update"))
     {
@@ -296,6 +304,20 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
     {
       g_signal_emit (self, signals[NET_STOP], 0);
     }
+  else if (g_str_equal (command, "back"))
+    {
+      gchar *params[1];
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+      priv->can_go_back = atoi (params[0]);
+    }
+  else if (g_str_equal (command, "forward"))
+    {
+      gchar *params[1];
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+      priv->can_go_forward = atoi (params[0]);
+    }
   else
     {
       g_warning ("Unrecognised feedback: %s", command);
@@ -360,6 +382,22 @@ send_command (ClutterMozEmbed *mozembed, const gchar *command)
   
   fwrite (command, strlen (command) + 1, 1, mozembed->priv->output);
   fflush (mozembed->priv->output);
+}
+
+static void
+block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  
+  priv->sync_call = feedback;
+  
+  /* FIXME: There needs to be a time limit here, or we can hang if the backend
+   *        hangs. Here or in input_io_func anyway...
+   */
+  while (input_io_func (priv->input, G_IO_IN, mozembed) && priv->sync_call);
+  
+  if (priv->sync_call)
+    g_warning ("Error making synchronous call to backend");
 }
 
 static void
@@ -893,5 +931,39 @@ clutter_mozembed_get_title (ClutterMozEmbed *mozembed)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
   return priv->title;
+}
+
+gboolean
+clutter_mozembed_can_go_back (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  send_command (mozembed, "can-go-back?");
+  block_until_feedback (mozembed, "back");
+  
+  return priv->can_go_back;
+}
+
+gboolean
+clutter_mozembed_can_go_forward (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  send_command (mozembed, "can-go-forward?");
+  block_until_feedback (mozembed, "forward");
+  
+  return priv->can_go_forward;
+}
+
+void
+clutter_mozembed_back (ClutterMozEmbed *mozembed)
+{
+  send_command (mozembed, "back");
+}
+
+void
+clutter_mozembed_forward (ClutterMozEmbed *mozembed)
+{
+  send_command (mozembed, "forward");
 }
 
