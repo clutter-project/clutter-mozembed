@@ -4,7 +4,7 @@
 
 #include <glib.h>
 #include <glib/gstdio.h>
-#include <mozheadless/moz-headless.h>
+#include <moz-headless.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -412,6 +412,9 @@ main (int argc, char **argv)
   shm_fd = shm_open (argv[2], O_CREAT | O_RDWR | O_TRUNC, 0666);
   if (shm_fd == -1)
     g_error ("Error opening shared memory");
+  
+  /* Initialise mozilla */
+  moz_headless_set_path (SDKDIR "/bin");
   
   headless = moz_headless_new ();
   

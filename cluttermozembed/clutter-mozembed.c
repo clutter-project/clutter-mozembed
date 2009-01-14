@@ -1,5 +1,5 @@
 #include "clutter-mozembed.h"
-#include <mozheadless/moz-headless.h>
+#include <moz-headless.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
