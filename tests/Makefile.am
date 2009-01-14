@@ -2,7 +2,7 @@
 AM_CPPFLAGS = \
 	$(CLUTTER_CFLAGS) \
 	$(MOZILLA_CFLAGS) \
-	-I$(top_builddir)/cluttermozembed
+	-I$(top_srcdir)/cluttermozembed
 AM_LDFLAGS = \
 	$(CLUTTER_LIBS) \
 	$(MOZILLA_LIBS)
@@ -12,8 +12,8 @@ noinst_PROGRAMS = \
 #	web-browser
 
 test_mozembed_SOURCES = test-mozembed.c
-test_mozembed_LDADD = ../cluttermozembed/libcluttermozembed.la
+test_mozembed_LDADD = $(top_builddir)/cluttermozembed/libcluttermozembed.la
 
 #web_browser_SOURCES = web-browser.c web-browser.h
-#web_browser_LDADD = ../cluttermozembed/libcluttermozembed.la
+#web_browser_LDADD = $(top_builddir)/cluttermozembed/libcluttermozembed.la
 
