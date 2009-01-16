@@ -1,10 +1,4 @@
 
-/* Building: */
-/* gcc -o test-mozembed clutter-mozembed.c test-mozembed.c -Wall -g `pkg-config --cflags --libs glib-2.0 clutter-0.8 sqlite3` -lxpcomglue_s -lxul -lxpcom -L/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/lib -I/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/include -I/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/include/nspr -lmozjs -lsoftokn3 */
-
-/* Running: */
-/* LD_LIBRARY_PATH=/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/lib MOZILLA_FIVE_HOME=/home/cwiiis/Projects/mozilla/obj-i686-pc-linux-gnu/dist/bin ./test-mozembed */
-
 #include <clutter/clutter.h>
 #include "clutter-mozembed.h"
 
