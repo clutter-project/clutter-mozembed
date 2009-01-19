@@ -453,6 +453,29 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
 static void
 clutter_mozembed_dispose (GObject *object)
 {
+  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
+  
+  if (priv->input)
+    {
+      GError *error = NULL;
+      
+      if (g_io_channel_shutdown (priv->input, FALSE, &error) ==
+          G_IO_STATUS_ERROR)
+        {
+          g_warning ("Error closing IO channel: %s", error->message);
+          g_error_free (error);
+        }
+      
+      g_io_channel_unref (priv->input);
+      priv->input = NULL;
+    }
+  
+  if (priv->output)
+    {
+      fclose (priv->output);
+      priv->output = NULL;
+    }
+  
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->dispose (object);
 }
 
@@ -759,6 +782,7 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
     case CLUTTER_SCROLL_UP :
       button = 4;
       break;
+    default:
     case CLUTTER_SCROLL_DOWN :
       button = 5;
       break;

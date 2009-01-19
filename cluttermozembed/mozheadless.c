@@ -465,6 +465,7 @@ main (int argc, char **argv)
   fclose (output);
   g_remove (argv[1]);
   
+  g_io_channel_shutdown (input, FALSE, NULL);
   g_io_channel_unref (input);
   
   shm_unlink ("/mozheadless");
