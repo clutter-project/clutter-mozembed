@@ -433,7 +433,7 @@ main (int argc, char **argv)
     g_error ("Error opening shared memory");
   
   /* Initialise mozilla */
-  moz_headless_set_path (SDKDIR "/bin");
+  moz_headless_set_path (MOZHOME);
   
   headless = moz_headless_new ();
   

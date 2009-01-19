@@ -16,8 +16,8 @@ PKG_CHECK_MODULES(CLUTTER, clutter-0.8 >= 0.8.4)
 PKG_CHECK_MODULES(MOZILLA, mozilla-js mozilla-headless >= 1.9.2a1pre)
 
 PKG_PROG_PKG_CONFIG()
-SDKDIR=`${PKG_CONFIG} --variable=sdkdir mozilla-headless`
-AC_SUBST([SDKDIR])
+MOZHOME=`${PKG_CONFIG} --variable=prefix mozilla-headless`"/lib/xulrunner-"`${PKG_CONFIG} --modversion mozilla-headless`
+AC_SUBST([MOZHOME])
 
 AC_OUTPUT([
 Makefile
