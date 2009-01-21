@@ -113,10 +113,16 @@ separate_strings (gchar **strings, gint n_strings, gchar *string)
 }
 
 static void
-update (ClutterMozEmbed *self, gint x, gint y, gint width, gint height)
+update (ClutterMozEmbed *self,
+        gint             x,
+        gint             y,
+        gint             width,
+        gint             height,
+        gint             surface_width,
+        gint             surface_height)
 {
   ClutterMozEmbedPrivate *priv = self->priv;
-  guint surface_width, surface_height, i;
+  guint tex_width, tex_height, i;
   
   if (!priv->opened_shm)
     {
@@ -127,8 +133,14 @@ update (ClutterMozEmbed *self, gint x, gint y, gint width, gint height)
         g_error ("Error opening shared memory");
     }
   
-  clutter_actor_get_size (CLUTTER_ACTOR (self),
-                          &surface_width, &surface_height);
+  clutter_actor_get_size (CLUTTER_ACTOR (self), &tex_width, &tex_height);
+  
+  /* If the surface size of the mozilla window is different to our texture 
+   * size, ignore it - it just means we've resized in the middle of the
+   * backend drawing and we'll get a new update almost immediately anyway.
+   */
+  if ((surface_width != tex_width) || (surface_height != tex_height))
+    return;
   
   if (!priv->image_data)
     {
@@ -260,9 +272,9 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
   if (g_str_equal (command, "update"))
     {
-      gint x, y, width, height;
+      gint x, y, width, height, surface_width, surface_height;
       
-      gchar *params[4];
+      gchar *params[6];
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
@@ -270,10 +282,12 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       y = atoi (params[1]);
       width = atoi (params[2]);
       height = atoi (params[3]);
+      surface_width = atoi (params[4]);
+      surface_height = atoi (params[5]);
       
       priv->new_data = TRUE;
       
-      update (self, x, y, width, height);
+      update (self, x, y, width, height, surface_width, surface_height);
       
       clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
     }

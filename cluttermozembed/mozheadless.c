@@ -166,8 +166,9 @@ updated_cb (MozHeadless *headless, gint x, gint y, gint width, gint height)
   msync (mmap_start, mmap_length, MS_SYNC);
 
   /*moz_headless_get_scroll_pos (headless, &sx, &sy);*/
-  feedback = g_strdup_printf ("update %d %d %d %d",
-                              x, y, width, height/*, sx, sy*/);
+  feedback = g_strdup_printf ("update %d %d %d %d %d %d",
+                              x, y, width, height,
+                              surface_width, surface_height/*, sx, sy*/);
   send_feedback (feedback);
   g_free (feedback);
   
