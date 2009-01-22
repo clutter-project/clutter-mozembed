@@ -532,7 +532,10 @@ clutter_mozembed_allocate (ClutterActor          *actor,
           if (priv->textures[i])
             clutter_actor_unparent (priv->textures[i]);
           priv->textures[i] =
-            g_object_new (CLUTTER_TYPE_TEXTURE, "visible", TRUE, NULL);
+            g_object_new (CLUTTER_TYPE_TEXTURE,
+                          "visible", TRUE,
+                          "filter-quality", CLUTTER_TEXTURE_QUALITY_MEDIUM,
+                          NULL);
           clutter_texture_set_from_rgb_data (CLUTTER_TEXTURE (priv->textures[i]),
                                              data, TRUE, width, height,
                                              width * 4, 4, 0, NULL);
@@ -572,10 +575,8 @@ clutter_mozembed_paint (ClutterActor *actor)
     {
       gint width = cogl_texture_get_width (priv->textures[0]);
       gint height = cogl_texture_get_height (priv->textures[0]);
-      ClutterFixed widthx = CLUTTER_INT_TO_FIXED (width);
-      ClutterFixed heightx = CLUTTER_INT_TO_FIXED (height);
 
-      cogl_clip_set (0, 0, widthx, heightx);
+      cogl_clip_set (0, 0, (float)width, (float)height);
       cogl_translate (priv->sx, priv->sy, 0);
       
       clutter_actor_paint (priv->textures[0]);
@@ -597,11 +598,11 @@ clutter_mozembed_paint (ClutterActor *actor)
 }
 
 static void
-clutter_mozembed_pick (ClutterActor *actor, const ClutterColor *color)
+clutter_mozembed_pick (ClutterActor *actor, const ClutterColor *c)
 {
   guint width, height;
   
-  cogl_color (color);
+  cogl_set_source_color4ub (c->red, c->green, c->blue, c->alpha);
   clutter_actor_get_size (actor, &width, &height);
   cogl_rectangle (0, 0, width, height);
 }
