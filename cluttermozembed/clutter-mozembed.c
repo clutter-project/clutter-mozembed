@@ -726,22 +726,20 @@ clutter_mozembed_get_keyval (ClutterKeyEvent *event, guint *keyval)
 {
   *keyval = event->unicode_value;
   
-  if (g_unichar_isprint (*keyval))
-    return TRUE;
-
   switch (event->keyval)
     {
     case CLUTTER_Return :
       *keyval = MOZ_KEY_RETURN;
-      break;
+      return TRUE;
     case CLUTTER_BackSpace :
       *keyval = MOZ_KEY_BACK_SPACE;
-      break;
-    default :
-      return FALSE;
+      return TRUE;
     }
   
-  return TRUE;
+  if (g_unichar_isprint (*keyval))
+    return TRUE;
+
+  return FALSE;
 }
 
 static gboolean

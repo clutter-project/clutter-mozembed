@@ -302,12 +302,12 @@ process_command (gchar *command)
     }
   else if (g_str_equal (command, "key-press"))
     {
-      gint key = atoi (detail);
+      guint key = atoi (detail);
       moz_headless_key_press (headless, (MozHeadlessKey)key);
     }
   else if (g_str_equal (command, "key-release"))
     {
-      gint key = atoi (detail);
+      guint key = atoi (detail);
       moz_headless_key_release (headless, (MozHeadlessKey)key);
     }
   else if (g_str_equal (command, "scroll"))
