@@ -259,14 +259,16 @@ process_command (gchar *command)
   else if (g_str_equal (command, "motion"))
     {
       gint x, y;
-      gchar *params[2];
+      MozHeadlessModifier m;
+      gchar *params[3];
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
       x = atoi (params[0]);
       y = atoi (params[1]);
+      m = atoi (params[2]);
       
-      moz_headless_motion (headless, x, y);
+      moz_headless_motion (headless, x, y, m);
       
       /* This is done so that we definitely get to do any redrawing before we
        * send an acknowledgement.
@@ -276,7 +278,8 @@ process_command (gchar *command)
   else if (g_str_equal (command, "button-press"))
     {
       gint x, y, b, c;
-      gchar *params[4];
+      MozHeadlessModifier m;
+      gchar *params[5];
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
@@ -284,31 +287,45 @@ process_command (gchar *command)
       y = atoi (params[1]);
       b = atoi (params[2]);
       c = atoi (params[3]);
+      m = atoi (params[4]);
       
-      moz_headless_button_press (headless, x, y, b, c);
+      moz_headless_button_press (headless, x, y, b, c, m);
     }
   else if (g_str_equal (command, "button-release"))
     {
       gint x, y, b;
-      gchar *params[3];
+      MozHeadlessModifier m;
+      gchar *params[4];
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
       x = atoi (params[0]);
       y = atoi (params[1]);
       b = atoi (params[2]);
+      m = atoi (params[3]);
       
-      moz_headless_button_release (headless, x, y, b);
+      moz_headless_button_release (headless, x, y, b, m);
     }
   else if (g_str_equal (command, "key-press"))
     {
-      guint key = atoi (detail);
-      moz_headless_key_press (headless, (MozHeadlessKey)key);
+      gchar *params[3];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      moz_headless_key_press (headless, (MozHeadlessKey)atoi (params[0]),
+                              (gunichar)atoi (params[1]),
+                              (MozHeadlessModifier)atoi (params[2]));
     }
   else if (g_str_equal (command, "key-release"))
     {
-      guint key = atoi (detail);
-      moz_headless_key_release (headless, (MozHeadlessKey)key);
+      gchar *params[2];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      moz_headless_key_release (headless, (MozHeadlessKey)atoi (params[0]),
+                                (MozHeadlessModifier)atoi (params[1]));
     }
   else if (g_str_equal (command, "scroll"))
     {
