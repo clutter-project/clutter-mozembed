@@ -108,9 +108,9 @@ net_stop_cb (MozHeadless *headless)
 }
 
 static gboolean
-scroll_cb (MozHeadless *headless, gint dx, gint dy)
+scroll_cb (MozHeadless *headless, MozHeadlessRect *rect, gint dx, gint dy)
 {
-  return TRUE;
+  return FALSE;
 }
 
 static void
