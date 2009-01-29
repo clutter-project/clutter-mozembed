@@ -26,18 +26,14 @@ main (int argc, char **argv)
   timeline2 = clutter_timeline_new_for_duration (1500);
   x_rot =
     clutter_behaviour_rotate_new (clutter_alpha_new_full (timeline1,
-                                                          CLUTTER_ALPHA_SINE,
-                                                          NULL,
-                                                          NULL),
+                                                          CLUTTER_EASE_IN_SINE),
                                   CLUTTER_X_AXIS,
                                   CLUTTER_ROTATE_CW,
                                   0,
                                   10);
   y_rot =
     clutter_behaviour_rotate_new (clutter_alpha_new_full (timeline2,
-                                                          CLUTTER_ALPHA_SINE,
-                                                          NULL,
-                                                          NULL),
+                                                          CLUTTER_EASE_IN_SINE),
                                   CLUTTER_Y_AXIS,
                                   CLUTTER_ROTATE_CCW,
                                   10,
