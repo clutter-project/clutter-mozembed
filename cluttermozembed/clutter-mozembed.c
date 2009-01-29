@@ -57,10 +57,11 @@ struct _ClutterMozEmbedPrivate
   GIOChannel      *input;
   FILE            *output;
   
-  gboolean         motion_ack;
-  gulong           motion_throttle;
-  gint             motion_x;
-  gint             motion_y;
+  gboolean            motion_ack;
+  gulong              motion_throttle;
+  gint                motion_x;
+  gint                motion_y;
+  ClutterModifierType motion_m;
   
   ClutterActor    *textures[4];
   
@@ -607,6 +608,19 @@ clutter_mozembed_pick (ClutterActor *actor, const ClutterColor *c)
   cogl_rectangle (0, 0, width, height);
 }
 
+static MozHeadlessModifier
+clutter_mozembed_get_modifier (ClutterModifierType modifiers)
+{
+  MozHeadlessModifier mozifiers = 0;
+  mozifiers |= (modifiers & CLUTTER_SHIFT_MASK) ? MOZ_KEY_SHIFT_MASK : 0;
+  mozifiers |= (modifiers & CLUTTER_CONTROL_MASK) ? MOZ_KEY_CONTROL_MASK : 0;
+  mozifiers |= (modifiers & CLUTTER_MOD1_MASK) ? MOZ_KEY_ALT_MASK : 0;
+  /* Following available in clutter 0.9 */
+  /*mozifiers |= (modifiers & CLUTTER_META_MASK) ? MOZ_KEY_META_MASK : 0;*/
+  
+  return mozifiers;
+}
+
 static gboolean
 motion_idle (ClutterMozEmbed *self)
 {
@@ -616,7 +630,8 @@ motion_idle (ClutterMozEmbed *self)
   if (!priv->motion_ack)
     return TRUE;
 
-  command = g_strdup_printf ("motion %d %d", priv->motion_x, priv->motion_y);
+  command = g_strdup_printf ("motion %d %d %u", priv->motion_x, priv->motion_y,
+                             clutter_mozembed_get_modifier (priv->motion_m));
   send_command (self, command);
   g_free (command);
   
@@ -641,6 +656,7 @@ clutter_mozembed_motion_event (ClutterActor *actor, ClutterMotionEvent *event)
   
   priv->motion_x = CLUTTER_UNITS_TO_INT (x_out);
   priv->motion_y = CLUTTER_UNITS_TO_INT (y_out);
+  priv->motion_m = event->modifier_state;
   
   /* Throttle motion events while there's new data waiting, otherwise we can
    * peg the back-end rendering new frames. (back-end sends 'mack' when it
@@ -684,11 +700,13 @@ clutter_mozembed_button_press_event (ClutterActor *actor,
   clutter_grab_pointer (actor);
   
   priv = CLUTTER_MOZEMBED (actor)->priv;
-  command = g_strdup_printf ("button-press %d %d %d %d",
-                             CLUTTER_UNITS_TO_INT (x_out),
-                             CLUTTER_UNITS_TO_INT (y_out),
-                             event->button,
-                             event->click_count);
+  command =
+    g_strdup_printf ("button-press %d %d %d %d %u",
+                     CLUTTER_UNITS_TO_INT (x_out),
+                     CLUTTER_UNITS_TO_INT (y_out),
+                     event->button,
+                     event->click_count,
+                     clutter_mozembed_get_modifier (event->modifier_state));
   send_command (CLUTTER_MOZEMBED (actor), command);
   g_free (command);
   
@@ -712,10 +730,12 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
     return FALSE;
   
   priv = CLUTTER_MOZEMBED (actor)->priv;
-  command = g_strdup_printf ("button-release %d %d %d",
-                             CLUTTER_UNITS_TO_INT (x_out),
-                             CLUTTER_UNITS_TO_INT (y_out),
-                             event->button);
+  command =
+    g_strdup_printf ("button-release %d %d %d %u",
+                     CLUTTER_UNITS_TO_INT (x_out),
+                     CLUTTER_UNITS_TO_INT (y_out),
+                     event->button,
+                     clutter_mozembed_get_modifier (event->modifier_state));
   send_command (CLUTTER_MOZEMBED (actor), command);
   g_free (command);
   
@@ -725,40 +745,245 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
 static gboolean
 clutter_mozembed_get_keyval (ClutterKeyEvent *event, guint *keyval)
 {
-  *keyval = event->unicode_value;
-  
-  if (g_unichar_isprint (*keyval))
-    return TRUE;
-
   switch (event->keyval)
     {
-    case CLUTTER_Return :
-      *keyval = MOZ_KEY_RETURN;
-      break;
+    case CLUTTER_Cancel :
+      *keyval = MOZ_KEY_CANCEL;
+      return TRUE;
+    case CLUTTER_Help :
+      *keyval = MOZ_KEY_HELP;
+      return TRUE;
     case CLUTTER_BackSpace :
       *keyval = MOZ_KEY_BACK_SPACE;
-      break;
-    default :
-      return FALSE;
+      return TRUE;
+    case CLUTTER_Tab :
+      *keyval = MOZ_KEY_TAB;
+      return TRUE;
+    case CLUTTER_Return :
+      *keyval = MOZ_KEY_RETURN;
+      return TRUE;
+    case CLUTTER_KP_Enter :
+      *keyval = MOZ_KEY_ENTER;
+      return TRUE;
+    case CLUTTER_Shift_L :
+    case CLUTTER_Shift_R :
+      *keyval = MOZ_KEY_SHIFT;
+      return TRUE;
+    case CLUTTER_Control_L :
+    case CLUTTER_Control_R :
+      *keyval = MOZ_KEY_CONTROL;
+      return TRUE;
+    case CLUTTER_Alt_L :
+    case CLUTTER_Alt_R :
+      *keyval = MOZ_KEY_ALT;
+      return TRUE;
+    case CLUTTER_Pause :
+      *keyval = MOZ_KEY_PAUSE;
+      return TRUE;
+    case CLUTTER_Caps_Lock :
+      *keyval = MOZ_KEY_CAPS_LOCK;
+      return TRUE;
+    case CLUTTER_Escape :
+      *keyval = MOZ_KEY_ESCAPE;
+      return TRUE;
+    case CLUTTER_space :
+      *keyval = MOZ_KEY_SPACE;
+      return TRUE;
+    case CLUTTER_Page_Up :
+      *keyval = MOZ_KEY_PAGE_UP;
+      return TRUE;
+    case CLUTTER_Page_Down :
+      *keyval = MOZ_KEY_PAGE_DOWN;
+      return TRUE;
+    case CLUTTER_End :
+      *keyval = MOZ_KEY_END;
+      return TRUE;
+    case CLUTTER_Home :
+      *keyval = MOZ_KEY_HOME;
+      return TRUE;
+    case CLUTTER_Left:
+      *keyval = MOZ_KEY_LEFT;
+      return TRUE;
+    case CLUTTER_Up:
+      *keyval = MOZ_KEY_UP;
+      return TRUE;
+    case CLUTTER_Right:
+      *keyval = MOZ_KEY_RIGHT;
+      return TRUE;
+    case CLUTTER_Down:
+      *keyval = MOZ_KEY_DOWN;
+      return TRUE;
+    case CLUTTER_Print:
+      *keyval = MOZ_KEY_PRINTSCREEN;
+      return TRUE;
+    case CLUTTER_Insert:
+      *keyval = MOZ_KEY_INSERT;
+      return TRUE;
+    case CLUTTER_Delete:
+      *keyval = MOZ_KEY_DELETE;
+      return TRUE;
+    case CLUTTER_semicolon:
+      *keyval = MOZ_KEY_SEMICOLON;
+      return TRUE;
+    case CLUTTER_equal:
+      *keyval = MOZ_KEY_EQUALS;
+      return TRUE;
+    case CLUTTER_Menu:
+      *keyval = MOZ_KEY_CONTEXT_MENU;
+      return TRUE;
+    case CLUTTER_KP_0:
+      *keyval = MOZ_KEY_NUMPAD0;
+      return TRUE;
+    case CLUTTER_KP_1:
+      *keyval = MOZ_KEY_NUMPAD1;
+      return TRUE;
+    case CLUTTER_KP_2:
+      *keyval = MOZ_KEY_NUMPAD2;
+      return TRUE;
+    case CLUTTER_KP_3:
+      *keyval = MOZ_KEY_NUMPAD3;
+      return TRUE;
+    case CLUTTER_KP_4:
+      *keyval = MOZ_KEY_NUMPAD4;
+      return TRUE;
+    case CLUTTER_KP_5:
+      *keyval = MOZ_KEY_NUMPAD5;
+      return TRUE;
+    case CLUTTER_KP_6:
+      *keyval = MOZ_KEY_NUMPAD6;
+      return TRUE;
+    case CLUTTER_KP_7:
+      *keyval = MOZ_KEY_NUMPAD7;
+      return TRUE;
+    case CLUTTER_KP_8:
+      *keyval = MOZ_KEY_NUMPAD8;
+      return TRUE;
+    case CLUTTER_KP_9:
+      *keyval = MOZ_KEY_NUMPAD9;
+      return TRUE;
+    case CLUTTER_KP_Add:
+      *keyval = MOZ_KEY_NUMPAD0;
+      return TRUE;
+    case CLUTTER_KP_Separator:
+      *keyval = MOZ_KEY_SEPARATOR;
+      return TRUE;
+    case CLUTTER_KP_Subtract:
+      *keyval = MOZ_KEY_SUBTRACT;
+      return TRUE;
+    case CLUTTER_KP_Decimal:
+      *keyval = MOZ_KEY_DECIMAL;
+      return TRUE;
+    case CLUTTER_KP_Divide:
+      *keyval = MOZ_KEY_DIVIDE;
+      return TRUE;
+    case CLUTTER_F1:
+      *keyval = MOZ_KEY_F1;
+      return TRUE;
+    case CLUTTER_F2:
+      *keyval = MOZ_KEY_F2;
+      return TRUE;
+    case CLUTTER_F3:
+      *keyval = MOZ_KEY_F3;
+      return TRUE;
+    case CLUTTER_F4:
+      *keyval = MOZ_KEY_F4;
+      return TRUE;
+    case CLUTTER_F5:
+      *keyval = MOZ_KEY_F5;
+      return TRUE;
+    case CLUTTER_F6:
+      *keyval = MOZ_KEY_F6;
+      return TRUE;
+    case CLUTTER_F7:
+      *keyval = MOZ_KEY_F7;
+      return TRUE;
+    case CLUTTER_F8:
+      *keyval = MOZ_KEY_F8;
+      return TRUE;
+    case CLUTTER_F9:
+      *keyval = MOZ_KEY_F9;
+      return TRUE;
+    case CLUTTER_F10:
+      *keyval = MOZ_KEY_F10;
+      return TRUE;
+    case CLUTTER_F11:
+      *keyval = MOZ_KEY_F11;
+      return TRUE;
+    case CLUTTER_F12:
+      *keyval = MOZ_KEY_F12;
+      return TRUE;
+    case CLUTTER_F13:
+      *keyval = MOZ_KEY_F13;
+      return TRUE;
+    case CLUTTER_F14:
+      *keyval = MOZ_KEY_F14;
+      return TRUE;
+    case CLUTTER_F15:
+      *keyval = MOZ_KEY_F15;
+      return TRUE;
+    case CLUTTER_F16:
+      *keyval = MOZ_KEY_F16;
+      return TRUE;
+    case CLUTTER_F17:
+      *keyval = MOZ_KEY_F17;
+      return TRUE;
+    case CLUTTER_F18:
+      *keyval = MOZ_KEY_F18;
+      return TRUE;
+    case CLUTTER_F19:
+      *keyval = MOZ_KEY_F19;
+      return TRUE;
+    case CLUTTER_F20:
+      *keyval = MOZ_KEY_F20;
+      return TRUE;
+    case CLUTTER_F21:
+      *keyval = MOZ_KEY_F21;
+      return TRUE;
+    case CLUTTER_F22:
+      *keyval = MOZ_KEY_F22;
+      return TRUE;
+    case CLUTTER_F23:
+      *keyval = MOZ_KEY_F23;
+      return TRUE;
+    case CLUTTER_F24:
+      *keyval = MOZ_KEY_F24;
+      return TRUE;
+    case CLUTTER_Num_Lock:
+      *keyval = MOZ_KEY_NUM_LOCK;
+      return TRUE;
+    case CLUTTER_Scroll_Lock:
+      *keyval = MOZ_KEY_SCROLL_LOCK;
+      return TRUE;
     }
   
-  return TRUE;
+
+  if (g_ascii_isalnum (event->unicode_value))
+    {
+      *keyval = event->unicode_value;
+      return TRUE;
+    }
+
+  *keyval = 0;
+
+  return FALSE;
 }
 
 static gboolean
 clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
 {
+  gchar *command;
   guint keyval;
-  
-  if (clutter_mozembed_get_keyval (event, &keyval))
-    {
-      gchar *command = g_strdup_printf ("key-press %d", keyval);
-      send_command (CLUTTER_MOZEMBED (actor), command);
-      g_free (command);
-      return TRUE;
-    }
-  
-  return FALSE;
+
+  if ((!clutter_mozembed_get_keyval (event, &keyval)) &&
+      (event->unicode_value == '\0'))
+    return FALSE;
+
+  command = g_strdup_printf ("key-press %u %u %u", keyval, event->unicode_value,
+                             clutter_mozembed_get_modifier (event->modifier_state));
+  send_command (CLUTTER_MOZEMBED (actor), command);
+  g_free (command);
+
+  return TRUE;
 }
 
 static gboolean
@@ -768,7 +993,9 @@ clutter_mozembed_key_release_event (ClutterActor *actor, ClutterKeyEvent *event)
   
   if (clutter_mozembed_get_keyval (event, &keyval))
     {
-      gchar *command = g_strdup_printf ("key-release %d", keyval);
+      gchar *command =
+        g_strdup_printf ("key-release %u %u", keyval,
+                         clutter_mozembed_get_modifier (event->modifier_state));
       send_command (CLUTTER_MOZEMBED (actor), command);
       g_free (command);
       return TRUE;
@@ -810,11 +1037,13 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
     }
   
   priv = CLUTTER_MOZEMBED (actor)->priv;
-  command = g_strdup_printf ("button-press %d %d %d %d",
-                             CLUTTER_UNITS_TO_INT (x_out),
-                             CLUTTER_UNITS_TO_INT (y_out),
-                             button,
-                             1);
+  command =
+    g_strdup_printf ("button-press %d %d %d %d %u",
+                     CLUTTER_UNITS_TO_INT (x_out),
+                     CLUTTER_UNITS_TO_INT (y_out),
+                     button,
+                     1,
+                     clutter_mozembed_get_modifier (event->modifier_state));
   send_command (CLUTTER_MOZEMBED (actor), command);
   g_free (command);
   
