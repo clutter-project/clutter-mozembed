@@ -51,13 +51,13 @@ G_BEGIN_DECLS
 typedef struct _ClutterMozEmbedPrivate ClutterMozEmbedPrivate;
 
 typedef struct {
-  ClutterActor parent;
+  ClutterTexture parent;
   
   ClutterMozEmbedPrivate *priv;
 } ClutterMozEmbed;
 
 typedef struct {
-  ClutterActorClass parent_class;
+  ClutterTextureClass parent_class;
   
   /* Signals */
   void (* progress)  (ClutterMozEmbed *mozembed, gdouble progress);
