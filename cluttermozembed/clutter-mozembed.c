@@ -1077,6 +1077,9 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   
   /* Open up standard input */
   priv->output = fdopen (standard_input, "w");
+  
+  /* Turn off sync-size (we manually size the texture on allocate) */
+  g_object_set (G_OBJECT (self), "sync-size", FALSE, NULL);
 }
 
 ClutterActor *
