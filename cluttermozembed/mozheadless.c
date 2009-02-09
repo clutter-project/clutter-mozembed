@@ -361,6 +361,18 @@ process_command (gchar *command)
     {
       moz_headless_go_forward (headless);
     }
+  else if (g_str_equal (command, "stop"))
+    {
+      moz_headless_stop_load (headless);
+    }
+  else if (g_str_equal (command, "refresh"))
+    {
+      moz_headless_reload (headless, MOZ_HEADLESS_FLAG_RELOADNORMAL);
+    }
+  else if (g_str_equal (command, "reload"))
+    {
+      moz_headless_reload (headless, MOZ_HEADLESS_FLAG_RELOADBYPASSCACHE);
+    }
   else if (g_str_equal (command, "quit"))
     {
       g_main_loop_quit (mainloop);

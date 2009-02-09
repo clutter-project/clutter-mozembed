@@ -1144,3 +1144,21 @@ clutter_mozembed_forward (ClutterMozEmbed *mozembed)
   send_command (mozembed, "forward");
 }
 
+void
+clutter_mozembed_stop (ClutterMozEmbed *mozembed)
+{
+  send_command (mozembed, "stop");
+}
+
+void
+clutter_mozembed_refresh (ClutterMozEmbed *mozembed)
+{
+  send_command (mozembed, "refresh");
+}
+
+void
+clutter_mozembed_reload (ClutterMozEmbed *mozembed)
+{
+  send_command (mozembed, "reload");
+}
+

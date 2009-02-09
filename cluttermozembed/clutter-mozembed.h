@@ -76,6 +76,9 @@ gboolean clutter_mozembed_can_go_back (ClutterMozEmbed *mozembed);
 gboolean clutter_mozembed_can_go_forward (ClutterMozEmbed *mozembed);
 void clutter_mozembed_back (ClutterMozEmbed *mozembed);
 void clutter_mozembed_forward (ClutterMozEmbed *mozembed);
+void clutter_mozembed_stop (ClutterMozEmbed *mozembed);
+void clutter_mozembed_refresh (ClutterMozEmbed *mozembed);
+void clutter_mozembed_reload (ClutterMozEmbed *mozembed);
 
 G_END_DECLS
 
