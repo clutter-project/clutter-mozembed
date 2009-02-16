@@ -63,6 +63,7 @@ typedef struct {
   void (* progress)  (ClutterMozEmbed *mozembed, gdouble progress);
   void (* net_start) (ClutterMozEmbed *mozembed);
   void (* net_stop)  (ClutterMozEmbed *mozembed);
+  void (* crashed)   (ClutterMozEmbed *mozembed);
 } ClutterMozEmbedClass;
 
 GType clutter_mozembed_get_type (void);

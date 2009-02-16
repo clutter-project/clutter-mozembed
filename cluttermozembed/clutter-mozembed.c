@@ -46,6 +46,7 @@ enum
   PROGRESS,
   NET_START,
   NET_STOP,
+  CRASHED,
   
   LAST_SIGNAL
 };
@@ -298,7 +299,7 @@ input_io_func (GIOChannel      *source,
     case G_IO_IN :
       
       status = g_io_channel_read_chars (source, buf, sizeof (buf), &length,
-					&error);
+                                        &error);
       if (status == G_IO_STATUS_NORMAL) {
         gsize current_length = 0;
         while (current_length < length)
@@ -307,37 +308,38 @@ input_io_func (GIOChannel      *source,
             current_length += strlen (&buf[current_length]) + 1;
             process_feedback (self, feedback);
           }
+        return TRUE;
       } else if (status == G_IO_STATUS_ERROR && error) {
         g_warning ("Error reading from source: %s", error->message);
         g_error_free (error);
-	return FALSE;
       } else if (status == G_IO_STATUS_EOF) {
         g_warning ("Reached end of input pipe");
-	return FALSE;
       }
       break;
 
     case G_IO_ERR :
     case G_IO_NVAL :
       g_warning ("Error or invalid request");
-      return FALSE;
+      break;
     
     case G_IO_HUP :
       g_warning ("Hung up");
 
       /* prevent any more calls to this function */
       if (priv->watch_id) {
-	g_source_remove (priv->watch_id);
-	priv->watch_id = 0;
+        g_source_remove (priv->watch_id);
+        priv->watch_id = 0;
       }
 
-      return FALSE;
+      break;
     
     default :
       g_warning ("Unhandled IO condition");
       return FALSE;
   }
 
+  g_signal_emit (self, signals[CRASHED], 0);
+  
   return TRUE;
 }
 
@@ -367,9 +369,6 @@ block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
    */
   while (input_io_func (priv->input, G_IO_IN, mozembed) && priv->sync_call);
 
-  /* FIXME: When this happens, this mozembed is hosed and we should destroy
-   *        it or restart mozheadless or something
-   */
   if (priv->sync_call)
     g_warning ("Error making synchronous call to backend");
 }
@@ -414,8 +413,8 @@ clutter_mozembed_dispose (GObject *object)
       GError *error = NULL;
 
       if (priv->watch_id) {
-	g_source_remove (priv->watch_id);
-	priv->watch_id = 0;
+        g_source_remove (priv->watch_id);
+        priv->watch_id = 0;
       }
       
       if (g_io_channel_shutdown (priv->input, FALSE, &error) ==
@@ -1032,6 +1031,15 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   NULL, NULL,
                   g_cclosure_marshal_VOID__VOID,
                   G_TYPE_NONE, 0);
+
+  signals[CRASHED] =
+    g_signal_new ("crashed",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, crashed),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__VOID,
+                  G_TYPE_NONE, 0);
 }
 
 static void
@@ -1095,10 +1103,10 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   g_io_channel_set_buffered (priv->input, FALSE);
   g_io_channel_set_close_on_unref (priv->input, TRUE);
   priv->watch_id = g_io_add_watch (priv->input,
-				   G_IO_IN | G_IO_PRI | G_IO_ERR |
-				   G_IO_NVAL | G_IO_HUP,
-				   (GIOFunc)input_io_func,
-				   self);
+                                   G_IO_IN | G_IO_PRI | G_IO_ERR |
+                                   G_IO_NVAL | G_IO_HUP,
+                                   (GIOFunc)input_io_func,
+                                   self);
 
   g_free (argv[1]);
   
