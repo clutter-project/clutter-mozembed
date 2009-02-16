@@ -56,6 +56,7 @@ struct _ClutterMozEmbedPrivate
 {
   GIOChannel      *input;
   FILE            *output;
+  guint            watch_id;
   
   gchar           *shm_name;
   gboolean         opened_shm;
@@ -283,17 +284,22 @@ input_io_func (GIOChannel      *source,
                GIOCondition     condition,
                ClutterMozEmbed *self)
 {
+  ClutterMozEmbedPrivate *priv = self->priv;
+
   /* FYI: Maximum URL length in IE is 2083 characters */
   gchar buf[4096];
   gsize length;
 
   GError *error = NULL;
+  GIOStatus status;
   
   switch (condition) {
     case G_IO_PRI :
     case G_IO_IN :
-      if (g_io_channel_read_chars (source, buf, sizeof (buf), &length, &error)
-          == G_IO_STATUS_NORMAL) {
+      
+      status = g_io_channel_read_chars (source, buf, sizeof (buf), &length,
+					&error);
+      if (status == G_IO_STATUS_NORMAL) {
         gsize current_length = 0;
         while (current_length < length)
           {
@@ -301,9 +307,13 @@ input_io_func (GIOChannel      *source,
             current_length += strlen (&buf[current_length]) + 1;
             process_feedback (self, feedback);
           }
-      } else {
+      } else if (status == G_IO_STATUS_ERROR && error) {
         g_warning ("Error reading from source: %s", error->message);
         g_error_free (error);
+	return FALSE;
+      } else if (status == G_IO_STATUS_EOF) {
+        g_warning ("Reached end of input pipe");
+	return FALSE;
       }
       break;
 
@@ -314,6 +324,13 @@ input_io_func (GIOChannel      *source,
     
     case G_IO_HUP :
       g_warning ("Hung up");
+
+      /* prevent any more calls to this function */
+      if (priv->watch_id) {
+	g_source_remove (priv->watch_id);
+	priv->watch_id = 0;
+      }
+
       return FALSE;
     
     default :
@@ -349,7 +366,10 @@ block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
    *        hangs. Here or in input_io_func anyway...
    */
   while (input_io_func (priv->input, G_IO_IN, mozembed) && priv->sync_call);
-  
+
+  /* FIXME: When this happens, this mozembed is hosed and we should destroy
+   *        it or restart mozheadless or something
+   */
   if (priv->sync_call)
     g_warning ("Error making synchronous call to backend");
 }
@@ -392,6 +412,11 @@ clutter_mozembed_dispose (GObject *object)
   if (priv->input)
     {
       GError *error = NULL;
+
+      if (priv->watch_id) {
+	g_source_remove (priv->watch_id);
+	priv->watch_id = 0;
+      }
       
       if (g_io_channel_shutdown (priv->input, FALSE, &error) ==
           G_IO_STATUS_ERROR)
@@ -418,8 +443,9 @@ clutter_mozembed_finalize (GObject *object)
 {
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
   
-  if (priv->shm_name)
-    g_free (priv->shm_name);
+  g_free (priv->location);
+  g_free (priv->title);
+  g_free (priv->shm_name);
   
   if (priv->image_data)
     munmap (priv->image_data, priv->image_size);
@@ -1068,10 +1094,11 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   g_io_channel_set_encoding (priv->input, NULL, NULL);
   g_io_channel_set_buffered (priv->input, FALSE);
   g_io_channel_set_close_on_unref (priv->input, TRUE);
-  g_io_add_watch (priv->input,
-                  G_IO_IN | G_IO_PRI | G_IO_ERR | G_IO_NVAL | G_IO_HUP,
-                  (GIOFunc)input_io_func,
-                  self);
+  priv->watch_id = g_io_add_watch (priv->input,
+				   G_IO_IN | G_IO_PRI | G_IO_ERR |
+				   G_IO_NVAL | G_IO_HUP,
+				   (GIOFunc)input_io_func,
+				   self);
 
   g_free (argv[1]);
   
