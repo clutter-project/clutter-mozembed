@@ -58,6 +58,7 @@ struct _ClutterMozEmbedPrivate
   GIOChannel      *input;
   FILE            *output;
   guint            watch_id;
+  GPid             child_pid;
   
   gchar           *shm_name;
   gboolean         opened_shm;
@@ -408,6 +409,12 @@ clutter_mozembed_dispose (GObject *object)
 {
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
   
+  if (priv->child_pid)
+    {
+      g_spawn_close_pid (priv->child_pid);
+      priv->child_pid = 0;
+    }
+
   if (priv->input)
     {
       GError *error = NULL;
@@ -427,7 +434,7 @@ clutter_mozembed_dispose (GObject *object)
       g_io_channel_unref (priv->input);
       priv->input = NULL;
     }
-  
+
   if (priv->output)
     {
       fclose (priv->output);
@@ -1082,7 +1089,7 @@ clutter_mozembed_init (ClutterMozEmbed *self)
                                       G_SPAWN_SEARCH_PATH,
                                       NULL,
                                       NULL,
-                                      NULL,
+                                      &priv->child_pid,
                                       &standard_input,
                                       NULL,
                                       NULL,
