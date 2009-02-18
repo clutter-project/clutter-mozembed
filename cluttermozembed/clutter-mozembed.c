@@ -509,7 +509,7 @@ clutter_mozembed_paint (ClutterActor *actor)
 
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->paint (actor);
   
-  if (priv->new_data)
+  if (priv->new_data && CLUTTER_ACTOR_IS_VISIBLE (actor))
     {
       priv->new_data = FALSE;
       send_command (self, "ack");
