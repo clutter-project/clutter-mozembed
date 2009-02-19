@@ -1020,12 +1020,13 @@ static void
 clutter_mozembed_constructed (GObject *object)
 {
   static gint spawned_windows = 0;
-  gint standard_input;
+  gchar *input_file;
   gboolean success;
 
   gchar *argv[] = {
-    "mozheadless",  /* TODO: We should probably use an absolute path here.. */
-    NULL, /* Pipe file */
+    "clutter-mozheadless",  /* TODO: Should probably use an absolute path.. */
+    NULL, /* Output pipe */
+    NULL, /* Input pipe */
     NULL, /* SHM name */
     NULL
   };
@@ -1053,20 +1054,33 @@ clutter_mozembed_constructed (GObject *object)
                                        spawned_windows);
   argv[1] = priv->pipe_file;
   
+  input_file = g_strdup_printf ("%s/clutter-mozheadless-%d-%d",
+                                g_get_tmp_dir (), getpid (), spawned_windows);
+  argv[2] = input_file;
+  
   if (!priv->shm_name)
     priv->shm_name = g_strdup_printf ("/mozheadless-%d-%d",
                                       getpid (), spawned_windows);
-  argv[2] = priv->shm_name;
+  argv[3] = priv->shm_name;
   
   spawned_windows++;
   
-  /* Create named pipe */
+  /* Create named pipes */
   if (mkfifo (argv[1], S_IRUSR | S_IWUSR) == -1)
     {
-      g_warning ("Error opening pipe");
+      g_warning ("Error creating output pipe (%s)", argv[1]);
+      g_free (input_file);
       return;
     }
   
+  /* Create named pipes */
+  if (mkfifo (argv[2], S_IRUSR | S_IWUSR) == -1)
+    {
+      g_warning ("Error creating input pipe (%s)", argv[2]);
+      g_free (input_file);
+      return;
+    }
+
   /* Spawn renderer */
   success = g_spawn_async_with_pipes (NULL,
                                       argv,
@@ -1075,7 +1089,7 @@ clutter_mozembed_constructed (GObject *object)
                                       NULL,
                                       NULL,
                                       &priv->child_pid,
-                                      &standard_input,
+                                      NULL,
                                       NULL,
                                       NULL,
                                       &error);
@@ -1084,6 +1098,7 @@ clutter_mozembed_constructed (GObject *object)
     {
       g_warning ("Error spawning renderer: %s", error->message);
       g_error_free (error);
+      g_free (input_file);
       return;
     }
 
@@ -1099,7 +1114,8 @@ clutter_mozembed_constructed (GObject *object)
                                    self);
 
   /* Open up standard input */
-  priv->output = fdopen (standard_input, "w");
+  priv->output = fopen (input_file, "w");
+  g_free (input_file);
 }
 
 static void

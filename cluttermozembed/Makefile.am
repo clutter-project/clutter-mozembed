@@ -18,9 +18,11 @@ source_h = \
 source_c = \
 	clutter-mozembed.c
 
-bin_PROGRAMS = mozheadless
+bin_PROGRAMS = clutter-mozheadless
 
-mozheadless_SOURCES = mozheadless.c
+clutter_mozheadless_SOURCES = \
+	clutter-mozheadless.c \
+	clutter-mozheadless.h
 
 lib_LTLIBRARIES = libcluttermozembed.la
 libcluttermozembed_la_SOURCES = $(source_c) $(source_h)
