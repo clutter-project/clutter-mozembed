@@ -353,10 +353,17 @@ input_io_func (GIOChannel      *source,
 static void
 send_command (ClutterMozEmbed *mozembed, const gchar *command)
 {
-  if (!mozembed->priv->output) {
-    g_warning ("Child process is not available");
+  if (!command)
     return;
-  }
+
+  if (!mozembed->priv->output)
+    {
+      g_warning ("Child process is not available");
+      return;
+    }
+  
+  if ((mozembed->priv->read_only) && (command[strlen(command)-1] != '?'))
+    return;
   
   /*g_debug ("Sending command: %s", command);*/
   
@@ -597,8 +604,6 @@ clutter_mozembed_motion_event (ClutterActor *actor, ClutterMotionEvent *event)
   ClutterUnit x_out, y_out;
   
   priv = CLUTTER_MOZEMBED (actor)->priv;
-  if (priv->read_only)
-    return FALSE;
 
   if (!clutter_actor_transform_stage_point (actor,
                                             CLUTTER_UNITS_FROM_INT (event->x),
@@ -644,8 +649,6 @@ clutter_mozembed_button_press_event (ClutterActor *actor,
   gchar *command;
   
   priv = CLUTTER_MOZEMBED (actor)->priv;
-  if (priv->read_only)
-    return FALSE;
 
   if (!clutter_actor_transform_stage_point (actor,
                                             CLUTTER_UNITS_FROM_INT (event->x),
@@ -679,8 +682,6 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
   clutter_ungrab_pointer ();
   
   priv = CLUTTER_MOZEMBED (actor)->priv;
-  if (priv->read_only)
-    return FALSE;
 
   if (!clutter_actor_transform_stage_point (actor,
                                             CLUTTER_UNITS_FROM_INT (event->x),
@@ -934,8 +935,6 @@ clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
   guint keyval;
 
   priv = CLUTTER_MOZEMBED (actor)->priv;
-  if (priv->read_only)
-    return FALSE;
 
   if ((!clutter_mozembed_get_keyval (event, &keyval)) &&
       (event->unicode_value == '\0'))
@@ -956,8 +955,6 @@ clutter_mozembed_key_release_event (ClutterActor *actor, ClutterKeyEvent *event)
   guint keyval;
   
   priv = CLUTTER_MOZEMBED (actor)->priv;
-  if (priv->read_only)
-    return FALSE;
 
   if (clutter_mozembed_get_keyval (event, &keyval))
     {
@@ -982,8 +979,6 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
   gint button;
   
   priv = CLUTTER_MOZEMBED (actor)->priv;
-  if (priv->read_only)
-    return FALSE;
 
   if (!clutter_actor_transform_stage_point (actor,
                                             CLUTTER_UNITS_FROM_INT (event->x),
