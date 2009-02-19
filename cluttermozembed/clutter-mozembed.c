@@ -39,6 +39,9 @@ enum
  
   PROP_LOCATION,
   PROP_TITLE,
+  PROP_READONLY,
+  PROP_PIPE,
+  PROP_SHM,
 };
 
 enum
@@ -60,6 +63,7 @@ struct _ClutterMozEmbedPrivate
   guint            watch_id;
   GPid             child_pid;
   
+  gchar           *pipe_file;
   gchar           *shm_name;
   gboolean         opened_shm;
   gboolean         new_data;
@@ -67,6 +71,8 @@ struct _ClutterMozEmbedPrivate
   
   void            *image_data;
   int              image_size;
+  
+  gboolean         read_only;
 
   gboolean            motion_ack;
   gulong              motion_throttle;
@@ -389,6 +395,18 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_string (value, clutter_mozembed_get_title (self));
     break;
 
+  case PROP_READONLY :
+    g_value_set_boolean (value, self->priv->read_only);
+    break;
+
+  case PROP_PIPE :
+    g_value_set_string (value, self->priv->pipe_file);
+    break;
+
+  case PROP_SHM :
+    g_value_set_string (value, self->priv->shm_name);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -398,7 +416,21 @@ static void
 clutter_mozembed_set_property (GObject *object, guint property_id,
                               const GValue *value, GParamSpec *pspec)
 {
+  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
+
   switch (property_id) {
+  case PROP_READONLY :
+    priv->read_only = g_value_get_boolean (value);
+    break;
+
+  case PROP_PIPE :
+    priv->pipe_file = g_value_dup_string (value);
+    break;
+
+  case PROP_SHM :
+    priv->shm_name = g_value_dup_string (value);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -451,6 +483,7 @@ clutter_mozembed_finalize (GObject *object)
   
   g_free (priv->location);
   g_free (priv->title);
+  g_free (priv->pipe_file);
   g_free (priv->shm_name);
   
   if (priv->image_data)
@@ -563,13 +596,15 @@ clutter_mozembed_motion_event (ClutterActor *actor, ClutterMotionEvent *event)
   ClutterMozEmbedPrivate *priv;
   ClutterUnit x_out, y_out;
   
+  priv = CLUTTER_MOZEMBED (actor)->priv;
+  if (priv->read_only)
+    return FALSE;
+
   if (!clutter_actor_transform_stage_point (actor,
                                             CLUTTER_UNITS_FROM_INT (event->x),
                                             CLUTTER_UNITS_FROM_INT (event->y),
                                             &x_out, &y_out))
     return FALSE;
-  
-  priv = CLUTTER_MOZEMBED (actor)->priv;
   
   priv->motion_x = CLUTTER_UNITS_TO_INT (x_out);
   priv->motion_y = CLUTTER_UNITS_TO_INT (y_out);
@@ -608,6 +643,10 @@ clutter_mozembed_button_press_event (ClutterActor *actor,
   ClutterUnit x_out, y_out;
   gchar *command;
   
+  priv = CLUTTER_MOZEMBED (actor)->priv;
+  if (priv->read_only)
+    return FALSE;
+
   if (!clutter_actor_transform_stage_point (actor,
                                             CLUTTER_UNITS_FROM_INT (event->x),
                                             CLUTTER_UNITS_FROM_INT (event->y),
@@ -616,7 +655,6 @@ clutter_mozembed_button_press_event (ClutterActor *actor,
   
   clutter_grab_pointer (actor);
   
-  priv = CLUTTER_MOZEMBED (actor)->priv;
   command =
     g_strdup_printf ("button-press %d %d %d %d %u",
                      CLUTTER_UNITS_TO_INT (x_out),
@@ -640,13 +678,16 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
   
   clutter_ungrab_pointer ();
   
+  priv = CLUTTER_MOZEMBED (actor)->priv;
+  if (priv->read_only)
+    return FALSE;
+
   if (!clutter_actor_transform_stage_point (actor,
                                             CLUTTER_UNITS_FROM_INT (event->x),
                                             CLUTTER_UNITS_FROM_INT (event->y),
                                             &x_out, &y_out))
     return FALSE;
   
-  priv = CLUTTER_MOZEMBED (actor)->priv;
   command =
     g_strdup_printf ("button-release %d %d %d %u",
                      CLUTTER_UNITS_TO_INT (x_out),
@@ -888,8 +929,13 @@ clutter_mozembed_get_keyval (ClutterKeyEvent *event, guint *keyval)
 static gboolean
 clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
 {
+  ClutterMozEmbedPrivate *priv;
   gchar *command;
   guint keyval;
+
+  priv = CLUTTER_MOZEMBED (actor)->priv;
+  if (priv->read_only)
+    return FALSE;
 
   if ((!clutter_mozembed_get_keyval (event, &keyval)) &&
       (event->unicode_value == '\0'))
@@ -906,8 +952,13 @@ clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
 static gboolean
 clutter_mozembed_key_release_event (ClutterActor *actor, ClutterKeyEvent *event)
 {
+  ClutterMozEmbedPrivate *priv;
   guint keyval;
   
+  priv = CLUTTER_MOZEMBED (actor)->priv;
+  if (priv->read_only)
+    return FALSE;
+
   if (clutter_mozembed_get_keyval (event, &keyval))
     {
       gchar *command =
@@ -930,6 +981,10 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
   gchar *command;
   gint button;
   
+  priv = CLUTTER_MOZEMBED (actor)->priv;
+  if (priv->read_only)
+    return FALSE;
+
   if (!clutter_actor_transform_stage_point (actor,
                                             CLUTTER_UNITS_FROM_INT (event->x),
                                             CLUTTER_UNITS_FROM_INT (event->y),
@@ -953,7 +1008,6 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
       break;
     }
   
-  priv = CLUTTER_MOZEMBED (actor)->priv;
   command =
     g_strdup_printf ("button-press %d %d %d %d %u",
                      CLUTTER_UNITS_TO_INT (x_out),
@@ -968,6 +1022,94 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
 }
 
 static void
+clutter_mozembed_constructed (GObject *object)
+{
+  static gint spawned_windows = 0;
+  gint standard_input;
+  gboolean success;
+
+  gchar *argv[] = {
+    "mozheadless",  /* TODO: We should probably use an absolute path here.. */
+    NULL, /* Pipe file */
+    NULL, /* SHM name */
+    NULL
+  };
+
+  ClutterMozEmbed *self = CLUTTER_MOZEMBED (object);
+  ClutterMozEmbedPrivate *priv = self->priv;
+  GError *error = NULL;
+
+  /* Set up out-of-process renderer */
+  
+  /* Generate names for pipe/shm, if not provided */
+  if (priv->pipe_file)
+    {
+      /* Don't overwrite user-supplied pipe files */
+      if (g_file_test (priv->pipe_file, G_FILE_TEST_EXISTS))
+        {
+          g_free (priv->pipe_file);
+          priv->pipe_file = NULL;
+        }
+    }
+  
+  if (!priv->pipe_file)
+    priv->pipe_file = g_strdup_printf ("%s/clutter-mozembed-%d-%d",
+                                       g_get_tmp_dir (), getpid (),
+                                       spawned_windows);
+  argv[1] = priv->pipe_file;
+  
+  if (!priv->shm_name)
+    priv->shm_name = g_strdup_printf ("/mozheadless-%d-%d",
+                                      getpid (), spawned_windows);
+  argv[2] = priv->shm_name;
+  
+  spawned_windows++;
+  
+  /* Create named pipe */
+  if (mkfifo (argv[1], S_IRUSR | S_IWUSR) == -1)
+    {
+      g_warning ("Error opening pipe");
+      return;
+    }
+  
+  /* Spawn renderer */
+  success = g_spawn_async_with_pipes (NULL,
+                                      argv,
+                                      NULL,
+                                      G_SPAWN_SEARCH_PATH,
+                                      NULL,
+                                      NULL,
+                                      &priv->child_pid,
+                                      &standard_input,
+                                      NULL,
+                                      NULL,
+                                      &error);
+  
+  if (!success)
+    {
+      g_warning ("Error spawning renderer: %s", error->message);
+      g_error_free (error);
+      return;
+    }
+
+  /* Read from named pipe */
+  priv->input = g_io_channel_new_file (argv[1], "r", NULL);
+  g_io_channel_set_encoding (priv->input, NULL, NULL);
+  g_io_channel_set_buffered (priv->input, FALSE);
+  g_io_channel_set_close_on_unref (priv->input, TRUE);
+  priv->watch_id = g_io_add_watch (priv->input,
+                                   G_IO_IN | G_IO_PRI | G_IO_ERR |
+                                   G_IO_NVAL | G_IO_HUP,
+                                   (GIOFunc)input_io_func,
+                                   self);
+
+  g_free (argv[1]);
+  
+  /* Open up standard input */
+  priv->output = fdopen (standard_input, "w");
+}
+
+static void
 clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
 {
   GObjectClass      *object_class = G_OBJECT_CLASS (klass);
@@ -979,6 +1121,7 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
   object_class->set_property = clutter_mozembed_set_property;
   object_class->dispose = clutter_mozembed_dispose;
   object_class->finalize = clutter_mozembed_finalize;
+  object_class->constructed = clutter_mozembed_constructed;
   
   actor_class->allocate             = clutter_mozembed_allocate;
   actor_class->paint                = clutter_mozembed_paint;
@@ -1011,6 +1154,46 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                         G_PARAM_STATIC_NAME |
                                                         G_PARAM_STATIC_NICK |
                                                         G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_READONLY,
+                                   g_param_spec_boolean ("read-only",
+                                                         "Read-only",
+                                                         "Whether to disallow "
+                                                         "input.",
+                                                         FALSE,
+                                                         G_PARAM_READWRITE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB |
+                                                         G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_PIPE,
+                                   g_param_spec_string ("pipe",
+                                                        "Pipe file",
+                                                        "Communications pipe "
+                                                        "file name.",
+                                                        NULL,
+                                                        G_PARAM_READWRITE |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_NICK |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_SHM,
+                                   g_param_spec_string ("shm",
+                                                        "Named SHM",
+                                                        "Named shared memory "
+                                                        "region for image "
+                                                        "buffer.",
+                                                        NULL,
+                                                        G_PARAM_READWRITE |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_NICK |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_CONSTRUCT_ONLY));
 
   signals[PROGRESS] =
     g_signal_new ("progress",
@@ -1052,73 +1235,10 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
 static void
 clutter_mozembed_init (ClutterMozEmbed *self)
 {
-  static gint spawned_windows = 0;
-  gint standard_input;
-  gboolean success;
-
-  gchar *argv[] = {
-    "mozheadless",
-    NULL, /* Pipe file */
-    NULL, /* SHM name */
-    NULL
-  };
-
-  GError *error = NULL;
-
   ClutterMozEmbedPrivate *priv = self->priv = MOZEMBED_PRIVATE (self);
   
   priv->motion_ack = TRUE;
-
   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
-  
-  /* Set up out-of-process renderer */
-  
-  /* Generate names for pipe/shm */
-  argv[1] = g_strdup_printf ("%s/clutter-mozembed-%d-%d",
-                             g_get_tmp_dir (), getpid (), spawned_windows);
-  argv[2] = priv->shm_name = g_strdup_printf ("/mozheadless-%d",
-                                              spawned_windows++);
-  
-  /* Create named pipe */
-  mkfifo (argv[1], S_IRUSR | S_IWUSR);
-  
-  /* Spawn renderer */
-  success = g_spawn_async_with_pipes (NULL,
-                                      argv,
-                                      NULL,
-                                      G_SPAWN_SEARCH_PATH,
-                                      NULL,
-                                      NULL,
-                                      &priv->child_pid,
-                                      &standard_input,
-                                      NULL,
-                                      NULL,
-                                      &error);
-  
-  if (!success)
-    {
-      g_warning ("Error spawning renderer: %s", error->message);
-      g_error_free (error);
-      return;
-    }
-
-  /* Read from named pipe */
-  /*FILE *input = fopen (argv[1], "r");
-  priv->input = g_io_channel_unix_new (fileno (input));*/
-  priv->input = g_io_channel_new_file (argv[1], "r", NULL);
-  g_io_channel_set_encoding (priv->input, NULL, NULL);
-  g_io_channel_set_buffered (priv->input, FALSE);
-  g_io_channel_set_close_on_unref (priv->input, TRUE);
-  priv->watch_id = g_io_add_watch (priv->input,
-                                   G_IO_IN | G_IO_PRI | G_IO_ERR |
-                                   G_IO_NVAL | G_IO_HUP,
-                                   (GIOFunc)input_io_func,
-                                   self);
-
-  g_free (argv[1]);
-  
-  /* Open up standard input */
-  priv->output = fdopen (standard_input, "w");
   
   /* Turn off sync-size (we manually size the texture on allocate) */
   g_object_set (G_OBJECT (self), "sync-size", FALSE, NULL);
