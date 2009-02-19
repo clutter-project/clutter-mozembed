@@ -32,9 +32,7 @@
 #include <fcntl.h>
 #include <string.h>
 
-static GIOChannel *input = NULL;
 static FILE *output = NULL;
-static MozHeadless *headless;
 static GMainLoop *mainloop;
 
 static gboolean waiting_for_ack = FALSE;
@@ -206,7 +204,7 @@ send_mack ()
 }
 
 static void
-process_command (gchar *command)
+process_command (MozHeadless *headless, gchar *command)
 {
   gchar *detail;
   
@@ -384,7 +382,9 @@ process_command (gchar *command)
 }
 
 static gboolean
-input_io_func (GIOChannel *source, GIOCondition condition)
+input_io_func (GIOChannel   *source,
+               GIOCondition  condition,
+               MozHeadless  *headless)
 {
   /* FYI: Maximum URL length in IE is 2083 characters */
   gchar buf[4096];
@@ -401,7 +401,7 @@ input_io_func (GIOChannel *source, GIOCondition condition)
           {
             gchar *command = &buf[current_length];
             current_length += strlen (&buf[current_length]) + 1;
-            process_command (command);
+            process_command (headless, command);
           }
       } else {
         g_warning ("Error reading from source: %s", error->message);
@@ -434,6 +434,9 @@ input_io_func (GIOChannel *source, GIOCondition condition)
 int
 main (int argc, char **argv)
 {
+  GIOChannel *input;
+  MozHeadless *headless;
+
   g_type_init ();
   
   if (argc != 3)
@@ -441,6 +444,11 @@ main (int argc, char **argv)
       printf ("Usage: %s <named pipe> <shm name>\n", argv[0]);
       return 1;
     }
+  
+  /* Initialise mozilla */
+  moz_headless_set_path (MOZHOME);
+  
+  headless = moz_headless_new ();
   
   output = fopen (argv[1], "w");
   if (!output)
@@ -456,16 +464,11 @@ main (int argc, char **argv)
   g_io_add_watch (input,
                   G_IO_IN | G_IO_ERR | G_IO_NVAL | G_IO_HUP,
                   (GIOFunc)input_io_func,
-                  NULL);
+                  headless);
   
   shm_fd = shm_open (argv[2], O_CREAT | O_RDWR | O_TRUNC, 0666);
   if (shm_fd == -1)
     g_error ("Error opening shared memory");
-  
-  /* Initialise mozilla */
-  moz_headless_set_path (MOZHOME);
-  
-  headless = moz_headless_new ();
   
   /* Remove scrollbars */
   /*moz_headless_set_chrome_mask (headless, 0);*/

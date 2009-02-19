@@ -1098,8 +1098,6 @@ clutter_mozembed_constructed (GObject *object)
                                    (GIOFunc)input_io_func,
                                    self);
 
-  g_free (argv[1]);
-  
   /* Open up standard input */
   priv->output = fdopen (standard_input, "w");
 }
