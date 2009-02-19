@@ -311,7 +311,7 @@ process_command (ClutterMozHeadless *moz_headless, gchar *command)
       /* This is done so that we definitely get to do any redrawing before we
        * send an acknowledgement.
        */
-      g_idle_add_full (G_PRIORITY_LOW, (GSourceFunc)send_mack, NULL, NULL);
+      g_idle_add_full (G_PRIORITY_LOW, (GSourceFunc)send_mack, headless, NULL);
     }
   else if (g_str_equal (command, "button-press"))
     {

@@ -1113,7 +1113,7 @@ clutter_mozembed_constructed (GObject *object)
                                    (GIOFunc)input_io_func,
                                    self);
 
-  /* Open up standard input */
+  /* Open up input channel */
   priv->output = fopen (input_file, "w");
   g_free (input_file);
 }
