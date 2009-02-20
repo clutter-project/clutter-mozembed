@@ -712,6 +712,13 @@ clutter_mozheadless_constructed (GObject *object)
   ClutterMozHeadless *self = CLUTTER_MOZHEADLESS (object);
   ClutterMozHeadlessPrivate *priv = self->priv;
   
+  g_debug ("Opening output file (%s)", priv->output_file);
+  priv->output = g_io_channel_new_file (priv->output_file, "w", NULL);
+  g_io_channel_set_encoding (priv->output, NULL, NULL);
+  g_io_channel_set_buffered (priv->output, FALSE);
+  g_io_channel_set_close_on_unref (priv->output, TRUE);
+  g_debug ("Opened output file");
+
   file = g_file_new_for_path (priv->input_file);
   priv->monitor = g_file_monitor_file (file, 0, NULL, NULL);
   g_object_unref (file);
@@ -722,13 +729,6 @@ clutter_mozheadless_constructed (GObject *object)
     file_changed_cb (priv->monitor, NULL, NULL,
                      G_FILE_MONITOR_EVENT_CREATED, self);
   
-  g_debug ("Opening output file (%s)", priv->output_file);
-  priv->output = g_io_channel_new_file (priv->output_file, "w", NULL);
-  g_io_channel_set_encoding (priv->output, NULL, NULL);
-  g_io_channel_set_buffered (priv->output, FALSE);
-  g_io_channel_set_close_on_unref (priv->output, TRUE);
-  g_debug ("Opened output file");
-
   if (!priv->shm_name)
     {
       priv->shm_name = g_strdup_printf ("/mozheadless-%d-%d",

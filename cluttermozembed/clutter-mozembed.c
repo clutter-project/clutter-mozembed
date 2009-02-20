@@ -1122,14 +1122,6 @@ clutter_mozembed_open_pipes (ClutterMozEmbed *self)
    *        backend crashes.
    */
 
-  /* Open output channel */
-  g_debug ("Opening input file (%s)", priv->input_file);
-  priv->output = g_io_channel_new_file (priv->input_file, "w", NULL);
-  g_io_channel_set_encoding (priv->output, NULL, NULL);
-  g_io_channel_set_buffered (priv->output, FALSE);
-  g_io_channel_set_close_on_unref (priv->output, TRUE);
-  g_debug ("Opened input file");
-
   /* Wait for headless process to create the output pipe */
   file = g_file_new_for_path (priv->output_file);
   priv->monitor = g_file_monitor_file (file, 0, NULL, NULL);
@@ -1140,6 +1132,14 @@ clutter_mozembed_open_pipes (ClutterMozEmbed *self)
   if (g_file_test (priv->output_file, G_FILE_TEST_EXISTS))
     file_changed_cb (priv->monitor, NULL, NULL,
                      G_FILE_MONITOR_EVENT_CREATED, self);
+
+  /* Open output channel */
+  g_debug ("Opening input file (%s)", priv->input_file);
+  priv->output = g_io_channel_new_file (priv->input_file, "w", NULL);
+  g_io_channel_set_encoding (priv->output, NULL, NULL);
+  g_io_channel_set_buffered (priv->output, FALSE);
+  g_io_channel_set_close_on_unref (priv->output, TRUE);
+  g_debug ("Opened input file");
 }
 
 static void
@@ -1306,7 +1306,7 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                         G_PARAM_CONSTRUCT_ONLY));
 
   g_object_class_install_property (object_class,
-                                   PROP_INPUT,
+                                   PROP_OUTPUT,
                                    g_param_spec_string ("output",
                                                         "Output file",
                                                         "Communications pipe "
