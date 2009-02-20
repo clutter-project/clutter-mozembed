@@ -3,8 +3,17 @@
 #include "clutter-mozembed.h"
 
 static void
+switch_direction_cb (ClutterTimeline *timeline)
+{
+  clutter_timeline_set_direction (timeline,
+                                  1-clutter_timeline_get_direction (timeline));
+}
+
+static void
 new_window_cb (ClutterMozEmbed *mozembed, ClutterActor *new_mozembed)
 {
+  ClutterTimeline *timeline;
+  ClutterBehaviour *z_rot;
   ClutterActor *stage;
   
   stage = clutter_stage_new ();
@@ -13,6 +22,20 @@ new_window_cb (ClutterMozEmbed *mozembed, ClutterActor *new_mozembed)
   clutter_container_add_actor (CLUTTER_CONTAINER (stage), new_mozembed);
   clutter_actor_set_size (new_mozembed, 640, 480);
   
+  timeline = clutter_timeline_new_for_duration (8000);
+  z_rot =
+    clutter_behaviour_rotate_new (clutter_alpha_new_full (
+                                    timeline, CLUTTER_LINEAR),
+                                  CLUTTER_Z_AXIS,
+                                  CLUTTER_ROTATE_CW,
+                                  0,
+                                  360);
+  clutter_behaviour_rotate_set_center (CLUTTER_BEHAVIOUR_ROTATE (z_rot),
+                                       320, 240, 0);
+  clutter_behaviour_apply (z_rot, new_mozembed);
+  clutter_timeline_set_loop (timeline, TRUE);
+  clutter_timeline_start (timeline);
+
   clutter_actor_show (stage);
   clutter_stage_set_key_focus (CLUTTER_STAGE (stage), new_mozembed);
 }
@@ -40,15 +63,15 @@ main (int argc, char **argv)
   timeline1 = clutter_timeline_new_for_duration (1000);
   timeline2 = clutter_timeline_new_for_duration (1500);
   x_rot =
-    clutter_behaviour_rotate_new (clutter_alpha_new_full (timeline1,
-                                                          CLUTTER_EASE_IN_SINE),
+    clutter_behaviour_rotate_new (clutter_alpha_new_full (
+                                    timeline1, CLUTTER_EASE_IN_OUT_SINE),
                                   CLUTTER_X_AXIS,
                                   CLUTTER_ROTATE_CW,
                                   0,
                                   10);
   y_rot =
-    clutter_behaviour_rotate_new (clutter_alpha_new_full (timeline2,
-                                                          CLUTTER_EASE_IN_SINE),
+    clutter_behaviour_rotate_new (clutter_alpha_new_full (
+                                    timeline2, CLUTTER_EASE_IN_OUT_SINE),
                                   CLUTTER_Y_AXIS,
                                   CLUTTER_ROTATE_CCW,
                                   10,
@@ -57,8 +80,12 @@ main (int argc, char **argv)
   clutter_behaviour_apply (y_rot, mozembed);
   clutter_timeline_set_loop (timeline1, TRUE);
   clutter_timeline_set_loop (timeline2, TRUE);
-  //clutter_timeline_start (timeline1);
-  //clutter_timeline_start (timeline2);
+  g_signal_connect (timeline1, "completed",
+                    G_CALLBACK (switch_direction_cb), NULL);
+  g_signal_connect (timeline2, "completed",
+                    G_CALLBACK (switch_direction_cb), NULL);
+  clutter_timeline_start (timeline1);
+  clutter_timeline_start (timeline2);
   
   g_signal_connect (mozembed, "new-window",
                     G_CALLBACK (new_window_cb), NULL);
