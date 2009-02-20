@@ -2,6 +2,21 @@
 #include <clutter/clutter.h>
 #include "clutter-mozembed.h"
 
+static void
+new_window_cb (ClutterMozEmbed *mozembed, ClutterActor *new_mozembed)
+{
+  ClutterActor *stage;
+  
+  stage = clutter_stage_new ();
+
+  clutter_actor_set_size (stage, 640, 480);
+  clutter_container_add_actor (CLUTTER_CONTAINER (stage), new_mozembed);
+  clutter_actor_set_size (new_mozembed, 640, 480);
+  
+  clutter_actor_show (stage);
+  clutter_stage_set_key_focus (CLUTTER_STAGE (stage), new_mozembed);
+}
+
 int
 main (int argc, char **argv)
 {
@@ -44,6 +59,9 @@ main (int argc, char **argv)
   clutter_timeline_set_loop (timeline2, TRUE);
   //clutter_timeline_start (timeline1);
   //clutter_timeline_start (timeline2);
+  
+  g_signal_connect (mozembed, "new-window",
+                    G_CALLBACK (new_window_cb), NULL);
   
   if (argc == 2)
     clutter_mozembed_open (CLUTTER_MOZEMBED (mozembed), argv[1]);

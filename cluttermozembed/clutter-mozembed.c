@@ -337,6 +337,10 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       g_free (command);
       
       clutter_mozembed_open_pipes (new_window);
+      
+      g_object_ref_sink (new_window);
+      g_signal_emit (self, signals[NEW_WINDOW], 0, new_window);
+      g_object_unref (new_window);
     }
   else
     {
