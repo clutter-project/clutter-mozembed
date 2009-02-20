@@ -77,6 +77,7 @@ struct _ClutterMozHeadlessPrivate
 };
 
 static GMainLoop *mainloop;
+static gint spawned_heads = 0;
 
 static void block_until_command (ClutterMozHeadless *moz_headless,
                                  const gchar        *command);
@@ -473,7 +474,7 @@ process_command (ClutterMozHeadless *moz_headless, gchar *command)
     }
   else if (g_str_equal (command, "quit"))
     {
-      g_main_loop_quit (mainloop);
+      g_object_unref (moz_headless);
     }
   else if (g_str_equal (command, "new-window-response"))
     {
@@ -536,8 +537,9 @@ input_io_func (GIOChannel          *source,
       g_warning ("Unhandled IO condition");
       break;
   }
-
-  g_main_loop_quit (mainloop);
+  
+  /* Kill this head */
+  g_object_unref (moz_headless);
 
   return FALSE;
 }
@@ -669,6 +671,10 @@ clutter_mozheadless_finalize (GObject *object)
   g_free (priv->input_file);
   g_free (priv->shm_name);
   
+  spawned_heads --;
+  if (spawned_heads <= 0)
+    g_main_loop_quit (mainloop);
+  
   G_OBJECT_CLASS (clutter_mozheadless_parent_class)->finalize (object);
 }
 
@@ -705,8 +711,6 @@ file_changed_cb (GFileMonitor       *monitor,
 static void
 clutter_mozheadless_constructed (GObject *object)
 {
-  static gint spawned_heads = 0;
-  
   GFile *file;
 
   ClutterMozHeadless *self = CLUTTER_MOZHEADLESS (object);
