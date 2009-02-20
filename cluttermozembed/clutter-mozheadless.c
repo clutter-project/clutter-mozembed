@@ -20,6 +20,7 @@
 
 #include <glib.h>
 #include <glib/gstdio.h>
+#include <gio/gio.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -50,8 +51,9 @@ struct _ClutterMozHeadlessPrivate
   gchar           *output_file;
   gchar           *shm_name;
   GIOChannel      *input;
-  FILE            *output;
+  GIOChannel      *output;
   guint            watch_id;
+  GFileMonitor    *monitor;
 
   gboolean         waiting_for_ack;
   gboolean         missed_update;
@@ -66,16 +68,26 @@ struct _ClutterMozHeadlessPrivate
 
   gint             surface_width;
   gint             surface_height;
+
+  /* Variables for synchronous calls */
+  const gchar     *sync_call;
+  gchar           *new_input_file;
+  gchar           *new_output_file;
+  gchar           *new_shm_name;
 };
 
 static GMainLoop *mainloop;
 
-void
+static void block_until_command (ClutterMozHeadless *moz_headless,
+                                 const gchar        *command);
+
+static void
 send_feedback (ClutterMozHeadless *headless, const gchar *feedback)
 {
   ClutterMozHeadlessPrivate *priv = headless->priv;
-  fwrite (feedback, strlen (feedback) + 1, 1, priv->output);
-  fflush (priv->output);
+  g_io_channel_write_chars (priv->output, feedback,
+                            strlen (feedback) + 1, NULL, NULL);
+  g_io_channel_flush (priv->output, NULL);
 }
 
 static void
@@ -209,6 +221,42 @@ updated_cb (MozHeadless        *headless,
   moz_headless_freeze_updates (headless, TRUE);
 }
 
+static void
+new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
+{
+  gchar *feedback;
+
+  ClutterMozHeadless *moz_headless = CLUTTER_MOZHEADLESS (headless);
+  ClutterMozHeadlessPrivate *priv = moz_headless->priv;
+
+  g_debug ("Creating new window (possibly)");
+  
+  feedback = g_strdup_printf ("new-window? %d", chromemask);
+  send_feedback (moz_headless, feedback);
+  g_free (feedback);
+  g_debug ("Waiting for response");
+  block_until_command (moz_headless, "new-window-response");
+  g_debug ("Got response");
+
+  if (priv->new_input_file && priv->new_output_file && priv->new_shm_name)
+    {
+      *newEmbed = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
+                                "output", priv->new_output_file,
+                                "input", priv->new_input_file,
+                                "shm", priv->new_shm_name,
+                                NULL);
+      g_debug ("Created window");
+    }
+
+  g_free (priv->new_input_file);
+  g_free (priv->new_output_file);
+  g_free (priv->new_shm_name);
+
+  priv->new_input_file = NULL;
+  priv->new_output_file = NULL;
+  priv->new_shm_name = NULL;
+}
+
 static gboolean
 separate_strings (gchar **strings, gint n_strings, gchar *string)
 {
@@ -258,6 +306,9 @@ process_command (ClutterMozHeadless *moz_headless, gchar *command)
       detail[0] = '\0';
       detail++;
     }
+
+  if (priv->sync_call && g_str_equal (command, priv->sync_call))
+    priv->sync_call = NULL;
 
   if (g_str_equal (command, "ack"))
     {
@@ -393,6 +444,9 @@ process_command (ClutterMozHeadless *moz_headless, gchar *command)
     }
   else if (g_str_equal (command, "shm-name?"))
     {
+      gchar *feedback = g_strdup_printf ("shm-name %s", priv->shm_name);
+      send_feedback (moz_headless, feedback);
+      g_free (feedback);
     }
   else if (g_str_equal (command, "drawing?"))
     {
@@ -420,6 +474,17 @@ process_command (ClutterMozHeadless *moz_headless, gchar *command)
   else if (g_str_equal (command, "quit"))
     {
       g_main_loop_quit (mainloop);
+    }
+  else if (g_str_equal (command, "new-window-response"))
+    {
+      gchar *params[3];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+      
+      priv->new_input_file = g_strdup (params[0]);
+      priv->new_output_file = g_strdup (params[1]);
+      priv->new_shm_name = g_strdup (params[2]);
     }
   else
     {
@@ -478,6 +543,22 @@ input_io_func (GIOChannel          *source,
 }
 
 static void
+block_until_command (ClutterMozHeadless *moz_headless, const gchar *command)
+{
+  ClutterMozHeadlessPrivate *priv = moz_headless->priv;
+  
+  priv->sync_call = command;
+  
+  /* FIXME: There needs to be a time limit here, or we can hang if the front-end
+   *        hangs. Here or in input_io_func anyway...
+   */
+  while (input_io_func (priv->input, G_IO_IN, moz_headless) && priv->sync_call);
+
+  if (priv->sync_call)
+    g_warning ("Error making synchronous call to backend");
+}
+
+static void
 clutter_mozheadless_get_property (GObject *object, guint property_id,
                                   GValue *value, GParamSpec *pspec)
 {
@@ -530,6 +611,13 @@ clutter_mozheadless_dispose (GObject *object)
 {
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (object)->priv;
   
+  if (priv->monitor)
+    {
+      g_file_monitor_cancel (priv->monitor);
+      g_object_unref (priv->monitor);
+      priv->monitor = NULL;
+    }
+
   if (priv->input)
     {
       GError *error = NULL;
@@ -542,7 +630,7 @@ clutter_mozheadless_dispose (GObject *object)
       if (g_io_channel_shutdown (priv->input, FALSE, &error) ==
           G_IO_STATUS_ERROR)
         {
-          g_warning ("Error closing IO channel: %s", error->message);
+          g_warning ("Error closing input channel: %s", error->message);
           g_error_free (error);
         }
       
@@ -553,7 +641,16 @@ clutter_mozheadless_dispose (GObject *object)
 
   if (priv->output)
     {
-      fclose (priv->output);
+      GError *error = NULL;
+
+      if (g_io_channel_shutdown (priv->output, FALSE, &error) ==
+          G_IO_STATUS_ERROR)
+        {
+          g_warning ("Error closing output channel: %s", error->message);
+          g_error_free (error);
+        }
+      
+      g_io_channel_unref (priv->output);
       priv->output = NULL;
       g_remove (priv->output_file);
     }
@@ -576,34 +673,62 @@ clutter_mozheadless_finalize (GObject *object)
 }
 
 static void
-clutter_mozheadless_constructed (GObject *object)
+file_changed_cb (GFileMonitor       *monitor,
+                 GFile              *file,
+                 GFile              *other_file,
+                 GFileMonitorEvent   event_type,
+                 ClutterMozHeadless *self)
 {
-  static gint spawned_heads = 0;
-  GError *error = NULL;
-  ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (object)->priv;
+  ClutterMozHeadlessPrivate *priv = self->priv;
+
+  if (event_type != G_FILE_MONITOR_EVENT_CREATED)
+    return;
   
-  priv->output = fopen (priv->output_file, "w");
-  if (!priv->output)
-    {
-      g_warning ("Error opening output channel (%s)", priv->output_file);
-      return;
-    }
-  
-  priv->input = g_io_channel_new_file (priv->input_file, "r", &error);
-  if (!priv->input)
-    {
-      g_warning ("Error opening stdin: %s", error->message);
-      return;
-    }
-  
+  g_signal_handlers_disconnect_by_func (monitor, file_changed_cb, self);
+  g_file_monitor_cancel (monitor);
+  g_object_unref (monitor);
+  priv->monitor = NULL;
+
+  /* Opening input channel */
+  g_debug ("Opening input file (%s)", priv->input_file);
+  priv->input = g_io_channel_new_file (priv->input_file, "r", NULL);
   g_io_channel_set_encoding (priv->input, NULL, NULL);
   g_io_channel_set_buffered (priv->input, FALSE);
   g_io_channel_set_close_on_unref (priv->input, TRUE);
   g_io_add_watch (priv->input,
                   G_IO_IN | G_IO_ERR | G_IO_NVAL | G_IO_HUP,
                   (GIOFunc)input_io_func,
-                  object);
+                  self);
+  g_debug ("Opened input file");
+}
+
+static void
+clutter_mozheadless_constructed (GObject *object)
+{
+  static gint spawned_heads = 0;
   
+  GFile *file;
+
+  ClutterMozHeadless *self = CLUTTER_MOZHEADLESS (object);
+  ClutterMozHeadlessPrivate *priv = self->priv;
+  
+  file = g_file_new_for_path (priv->input_file);
+  priv->monitor = g_file_monitor_file (file, 0, NULL, NULL);
+  g_object_unref (file);
+  g_signal_connect (priv->monitor, "changed",
+                    G_CALLBACK (file_changed_cb), object);
+
+  if (g_file_test (priv->input_file, G_FILE_TEST_EXISTS))
+    file_changed_cb (priv->monitor, NULL, NULL,
+                     G_FILE_MONITOR_EVENT_CREATED, self);
+  
+  g_debug ("Opening output file (%s)", priv->output_file);
+  priv->output = g_io_channel_new_file (priv->output_file, "w", NULL);
+  g_io_channel_set_encoding (priv->output, NULL, NULL);
+  g_io_channel_set_buffered (priv->output, FALSE);
+  g_io_channel_set_close_on_unref (priv->output, TRUE);
+  g_debug ("Opened output file");
+
   if (!priv->shm_name)
     {
       priv->shm_name = g_strdup_printf ("/mozheadless-%d-%d",
@@ -633,6 +758,8 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (scroll_cb), NULL);
   g_signal_connect (object, "updated",
                     G_CALLBACK (updated_cb), NULL);
+  g_signal_connect (object, "new-window",
+                    G_CALLBACK (new_window_cb), NULL);
 
   spawned_heads ++;
 }
@@ -719,7 +846,6 @@ main (int argc, char **argv)
   /* Initialise mozilla */
   moz_headless_set_path (MOZHOME);
   
-  g_debug ("%s %s %s", argv[1], argv[2], argv[3]);
   moz_headless = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
                                "output", argv[1],
                                "input", argv[2],

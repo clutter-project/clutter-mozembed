@@ -19,6 +19,7 @@
  */
 
 #include "clutter-mozembed.h"
+#include <gio/gio.h>
 #include <moz-headless.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -40,8 +41,10 @@ enum
   PROP_LOCATION,
   PROP_TITLE,
   PROP_READONLY,
-  PROP_PIPE,
+  PROP_INPUT,
+  PROP_OUTPUT,
   PROP_SHM,
+  PROP_SPAWN,
 };
 
 enum
@@ -50,6 +53,7 @@ enum
   NET_START,
   NET_STOP,
   CRASHED,
+  NEW_WINDOW,
   
   LAST_SIGNAL
 };
@@ -58,16 +62,19 @@ static guint signals[LAST_SIGNAL] = { 0, };
 
 struct _ClutterMozEmbedPrivate
 {
+  GFileMonitor    *monitor;
   GIOChannel      *input;
-  FILE            *output;
+  GIOChannel      *output;
   guint            watch_id;
   GPid             child_pid;
   
-  gchar           *pipe_file;
+  gchar           *input_file;
+  gchar           *output_file;
   gchar           *shm_name;
   gboolean         opened_shm;
   gboolean         new_data;
   int              shm_fd;
+  gboolean         spawn;
   
   void            *image_data;
   int              image_size;
@@ -96,6 +103,8 @@ struct _ClutterMozEmbedPrivate
   gint             page_width;
   gint             page_height;*/
 };
+
+static void clutter_mozembed_open_pipes (ClutterMozEmbed *self);
 
 static gboolean
 separate_strings (gchar **strings, gint n_strings, gchar *string)
@@ -178,6 +187,29 @@ update (ClutterMozEmbed *self,
       g_warning ("Error setting texture data: %s", error->message);
       g_error_free (error);
     }
+}
+
+static void
+send_command (ClutterMozEmbed *mozembed, const gchar *command)
+{
+  if (!command)
+    return;
+
+  if (!mozembed->priv->output)
+    {
+      g_warning ("Child process is not available");
+      return;
+    }
+  
+  if ((mozembed->priv->read_only) && (command[strlen(command)-1] != '?'))
+    return;
+  
+  /*g_debug ("Sending command: %s", command);*/
+  
+  /* TODO: Error handling */
+  g_io_channel_write_chars (mozembed->priv->output, command,
+                            strlen (command) + 1, NULL, NULL);
+  g_io_channel_flush (mozembed->priv->output, NULL);
 }
 
 static void
@@ -281,6 +313,31 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
         return;
       priv->can_go_forward = atoi (params[0]);
     }
+  else if (g_str_equal (command, "new-window?"))
+    {
+      gchar *output_file, *input_file, *shm_name, *command;
+      ClutterMozEmbed *new_window;
+      gchar *params[1];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+      
+      new_window = g_object_new (CLUTTER_TYPE_MOZEMBED, "spawn", FALSE, NULL);
+      
+      output_file = input_file = shm_name = NULL;
+      g_object_get (G_OBJECT (new_window),
+                    "output", &output_file,
+                    "input", &input_file,
+                    "shm", &shm_name,
+                    NULL);
+      
+      command = g_strdup_printf ("new-window-response %s %s %s",
+                                 input_file, output_file, shm_name);
+      send_command (self, command);
+      g_free (command);
+      
+      clutter_mozembed_open_pipes (new_window);
+    }
   else
     {
       g_warning ("Unrecognised feedback: %s", command);
@@ -351,27 +408,6 @@ input_io_func (GIOChannel      *source,
 }
 
 static void
-send_command (ClutterMozEmbed *mozembed, const gchar *command)
-{
-  if (!command)
-    return;
-
-  if (!mozembed->priv->output)
-    {
-      g_warning ("Child process is not available");
-      return;
-    }
-  
-  if ((mozembed->priv->read_only) && (command[strlen(command)-1] != '?'))
-    return;
-  
-  /*g_debug ("Sending command: %s", command);*/
-  
-  fwrite (command, strlen (command) + 1, 1, mozembed->priv->output);
-  fflush (mozembed->priv->output);
-}
-
-static void
 block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
@@ -406,8 +442,12 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_boolean (value, self->priv->read_only);
     break;
 
-  case PROP_PIPE :
-    g_value_set_string (value, self->priv->pipe_file);
+  case PROP_INPUT :
+    g_value_set_string (value, self->priv->input_file);
+    break;
+
+  case PROP_OUTPUT :
+    g_value_set_string (value, self->priv->output_file);
     break;
 
   case PROP_SHM :
@@ -430,12 +470,20 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
     priv->read_only = g_value_get_boolean (value);
     break;
 
-  case PROP_PIPE :
-    priv->pipe_file = g_value_dup_string (value);
+  case PROP_INPUT :
+    priv->input_file = g_value_dup_string (value);
+    break;
+
+  case PROP_OUTPUT :
+    priv->output_file = g_value_dup_string (value);
     break;
 
   case PROP_SHM :
     priv->shm_name = g_value_dup_string (value);
+    break;
+
+  case PROP_SPAWN :
+    priv->spawn = g_value_get_boolean (value);
     break;
 
   default:
@@ -447,6 +495,13 @@ static void
 clutter_mozembed_dispose (GObject *object)
 {
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
+  
+  if (priv->monitor)
+    {
+      g_file_monitor_cancel (priv->monitor);
+      g_object_unref (priv->monitor);
+      priv->monitor = NULL;
+    }
   
   if (priv->child_pid)
     {
@@ -476,7 +531,16 @@ clutter_mozembed_dispose (GObject *object)
 
   if (priv->output)
     {
-      fclose (priv->output);
+      GError *error = NULL;
+      
+      if (g_io_channel_shutdown (priv->output, FALSE, &error) ==
+          G_IO_STATUS_ERROR)
+        {
+          g_warning ("Error closing IO channel: %s", error->message);
+          g_error_free (error);
+        }
+      
+      g_io_channel_unref (priv->output);
       priv->output = NULL;
     }
   
@@ -490,7 +554,8 @@ clutter_mozembed_finalize (GObject *object)
   
   g_free (priv->location);
   g_free (priv->title);
-  g_free (priv->pipe_file);
+  g_free (priv->input_file);
+  g_free (priv->output_file);
   g_free (priv->shm_name);
   
   if (priv->image_data)
@@ -1017,10 +1082,70 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
 }
 
 static void
+file_changed_cb (GFileMonitor      *monitor,
+                 GFile             *file,
+                 GFile             *other_file,
+                 GFileMonitorEvent  event_type,
+                 ClutterMozEmbed   *self)
+{
+  ClutterMozEmbedPrivate *priv = self->priv;
+
+  if (event_type != G_FILE_MONITOR_EVENT_CREATED)
+    return;
+
+  g_signal_handlers_disconnect_by_func (monitor, file_changed_cb, self);
+  g_file_monitor_cancel (monitor);
+  g_object_unref (monitor);
+  priv->monitor = NULL;
+
+  /* Open input channel */
+  g_debug ("Opening output file (%s)", priv->output_file);
+  priv->input = g_io_channel_new_file (priv->output_file, "r", NULL);
+  g_io_channel_set_encoding (priv->input, NULL, NULL);
+  g_io_channel_set_buffered (priv->input, FALSE);
+  g_io_channel_set_close_on_unref (priv->input, TRUE);
+  priv->watch_id = g_io_add_watch (priv->input,
+                                   G_IO_IN | G_IO_PRI | G_IO_ERR |
+                                   G_IO_NVAL | G_IO_HUP,
+                                   (GIOFunc)input_io_func,
+                                   self);
+  g_debug ("Opened output file");
+}
+
+static void
+clutter_mozembed_open_pipes (ClutterMozEmbed *self)
+{
+  GFile *file;
+  ClutterMozEmbedPrivate *priv = self->priv;
+
+  /* FIXME: This needs a time-out, or we can block here indefinitely if the
+   *        backend crashes.
+   */
+
+  /* Open output channel */
+  g_debug ("Opening input file (%s)", priv->input_file);
+  priv->output = g_io_channel_new_file (priv->input_file, "w", NULL);
+  g_io_channel_set_encoding (priv->output, NULL, NULL);
+  g_io_channel_set_buffered (priv->output, FALSE);
+  g_io_channel_set_close_on_unref (priv->output, TRUE);
+  g_debug ("Opened input file");
+
+  /* Wait for headless process to create the output pipe */
+  file = g_file_new_for_path (priv->output_file);
+  priv->monitor = g_file_monitor_file (file, 0, NULL, NULL);
+  g_object_unref (file);
+  g_signal_connect (priv->monitor, "changed",
+                    G_CALLBACK (file_changed_cb), self);
+
+  if (g_file_test (priv->output_file, G_FILE_TEST_EXISTS))
+    file_changed_cb (priv->monitor, NULL, NULL,
+                     G_FILE_MONITOR_EVENT_CREATED, self);
+}
+
+static void
 clutter_mozembed_constructed (GObject *object)
 {
   static gint spawned_windows = 0;
-  gchar *input_file;
   gboolean success;
 
   gchar *argv[] = {
@@ -1038,84 +1163,74 @@ clutter_mozembed_constructed (GObject *object)
   /* Set up out-of-process renderer */
   
   /* Generate names for pipe/shm, if not provided */
-  if (priv->pipe_file)
+  /* Don't overwrite user-supplied pipe files */
+  if (priv->output_file && g_file_test (priv->output_file, G_FILE_TEST_EXISTS))
     {
-      /* Don't overwrite user-supplied pipe files */
-      if (g_file_test (priv->pipe_file, G_FILE_TEST_EXISTS))
-        {
-          g_free (priv->pipe_file);
-          priv->pipe_file = NULL;
-        }
+      g_free (priv->output_file);
+      priv->output_file = NULL;
+    }
+  if (g_file_test (priv->input_file, G_FILE_TEST_EXISTS))
+    {
+      g_free (priv->input_file);
+      priv->input_file = NULL;
     }
   
-  if (!priv->pipe_file)
-    priv->pipe_file = g_strdup_printf ("%s/clutter-mozembed-%d-%d",
-                                       g_get_tmp_dir (), getpid (),
-                                       spawned_windows);
-  argv[1] = priv->pipe_file;
+  if (!priv->output_file)
+    priv->output_file = g_strdup_printf ("%s/clutter-mozembed-%d-%d",
+                                         g_get_tmp_dir (), getpid (),
+                                         spawned_windows);
   
-  input_file = g_strdup_printf ("%s/clutter-mozheadless-%d-%d",
-                                g_get_tmp_dir (), getpid (), spawned_windows);
-  argv[2] = input_file;
+  if (!priv->input_file)
+    priv->input_file = g_strdup_printf ("%s/clutter-mozheadless-%d-%d",
+                                        g_get_tmp_dir (), getpid (),
+                                        spawned_windows);
   
   if (!priv->shm_name)
     priv->shm_name = g_strdup_printf ("/mozheadless-%d-%d",
                                       getpid (), spawned_windows);
-  argv[3] = priv->shm_name;
   
   spawned_windows++;
   
   /* Create named pipes */
-  if (mkfifo (argv[1], S_IRUSR | S_IWUSR) == -1)
+  if (mkfifo (priv->output_file, S_IRUSR | S_IWUSR) == -1)
     {
       g_warning ("Error creating output pipe (%s)", argv[1]);
-      g_free (input_file);
       return;
     }
-  
-  /* Create named pipes */
-  if (mkfifo (argv[2], S_IRUSR | S_IWUSR) == -1)
+  if (mkfifo (priv->input_file, S_IRUSR | S_IWUSR) == -1)
     {
       g_warning ("Error creating input pipe (%s)", argv[2]);
-      g_free (input_file);
       return;
     }
 
   /* Spawn renderer */
-  success = g_spawn_async_with_pipes (NULL,
-                                      argv,
-                                      NULL,
-                                      G_SPAWN_SEARCH_PATH,
-                                      NULL,
-                                      NULL,
-                                      &priv->child_pid,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      &error);
-  
-  if (!success)
+  argv[1] = priv->output_file;
+  argv[2] = priv->input_file;
+  argv[3] = priv->shm_name;
+
+  if (priv->spawn)
     {
-      g_warning ("Error spawning renderer: %s", error->message);
-      g_error_free (error);
-      g_free (input_file);
-      return;
+      success = g_spawn_async_with_pipes (NULL,
+                                          argv,
+                                          NULL,
+                                          G_SPAWN_SEARCH_PATH,
+                                          NULL,
+                                          NULL,
+                                          &priv->child_pid,
+                                          NULL,
+                                          NULL,
+                                          NULL,
+                                          &error);
+      
+      if (!success)
+        {
+          g_warning ("Error spawning renderer: %s", error->message);
+          g_error_free (error);
+          return;
+        }
+      
+      clutter_mozembed_open_pipes (self);
     }
-
-  /* Read from named pipe */
-  priv->input = g_io_channel_new_file (argv[1], "r", NULL);
-  g_io_channel_set_encoding (priv->input, NULL, NULL);
-  g_io_channel_set_buffered (priv->input, FALSE);
-  g_io_channel_set_close_on_unref (priv->input, TRUE);
-  priv->watch_id = g_io_add_watch (priv->input,
-                                   G_IO_IN | G_IO_PRI | G_IO_ERR |
-                                   G_IO_NVAL | G_IO_HUP,
-                                   (GIOFunc)input_io_func,
-                                   self);
-
-  /* Open up input channel */
-  priv->output = fopen (input_file, "w");
-  g_free (input_file);
 }
 
 static void
@@ -1178,11 +1293,24 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                          G_PARAM_CONSTRUCT_ONLY));
 
   g_object_class_install_property (object_class,
-                                   PROP_PIPE,
-                                   g_param_spec_string ("pipe",
-                                                        "Pipe file",
+                                   PROP_INPUT,
+                                   g_param_spec_string ("input",
+                                                        "Input file",
                                                         "Communications pipe "
-                                                        "file name.",
+                                                        "file name (input).",
+                                                        NULL,
+                                                        G_PARAM_READWRITE |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_NICK |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_INPUT,
+                                   g_param_spec_string ("output",
+                                                        "Output file",
+                                                        "Communications pipe "
+                                                        "file name (output).",
                                                         NULL,
                                                         G_PARAM_READWRITE |
                                                         G_PARAM_STATIC_NAME |
@@ -1203,6 +1331,18 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                         G_PARAM_STATIC_NICK |
                                                         G_PARAM_STATIC_BLURB |
                                                         G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_SPAWN,
+                                   g_param_spec_boolean ("spawn",
+                                                         "Spawn",
+                                                         "Spawn a new process.",
+                                                         TRUE,
+                                                         G_PARAM_WRITABLE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB |
+                                                         G_PARAM_CONSTRUCT_ONLY));
 
   signals[PROGRESS] =
     g_signal_new ("progress",
@@ -1239,6 +1379,15 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   NULL, NULL,
                   g_cclosure_marshal_VOID__VOID,
                   G_TYPE_NONE, 0);
+
+  signals[NEW_WINDOW] =
+    g_signal_new ("new-window",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, new_window),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__OBJECT,
+                  G_TYPE_NONE, 1, CLUTTER_TYPE_MOZEMBED);
 }
 
 static void
@@ -1247,6 +1396,8 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   ClutterMozEmbedPrivate *priv = self->priv = MOZEMBED_PRIVATE (self);
   
   priv->motion_ack = TRUE;
+  priv->spawn = TRUE;
+
   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
   
   /* Turn off sync-size (we manually size the texture on allocate) */
