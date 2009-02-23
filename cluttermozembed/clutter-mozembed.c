@@ -54,6 +54,7 @@ enum
   NET_STOP,
   CRASHED,
   NEW_WINDOW,
+  CLOSED,
   
   LAST_SIGNAL
 };
@@ -341,6 +342,10 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       g_object_ref_sink (new_window);
       g_signal_emit (self, signals[NEW_WINDOW], 0, new_window);
       g_object_unref (new_window);
+    }
+  else if (g_str_equal (command, "closed"))
+    {
+      g_signal_emit (self, signals[CLOSED], 0);
     }
   else
     {
@@ -1392,6 +1397,15 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   NULL, NULL,
                   g_cclosure_marshal_VOID__OBJECT,
                   G_TYPE_NONE, 1, CLUTTER_TYPE_MOZEMBED);
+
+  signals[CLOSED] =
+    g_signal_new ("closed",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, closed),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__VOID,
+                  G_TYPE_NONE, 0);
 }
 
 static void

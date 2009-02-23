@@ -258,6 +258,12 @@ new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
   priv->new_shm_name = NULL;
 }
 
+static void
+destroy_browser_cb (ClutterMozHeadless *moz_headless)
+{
+  send_feedback (moz_headless, "closed");
+}
+
 static gboolean
 separate_strings (gchar **strings, gint n_strings, gchar *string)
 {
@@ -764,6 +770,8 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (updated_cb), NULL);
   g_signal_connect (object, "new-window",
                     G_CALLBACK (new_window_cb), NULL);
+  g_signal_connect (object, "destroy-browser",
+                    G_CALLBACK (destroy_browser_cb), NULL);
 
   spawned_heads ++;
 }
