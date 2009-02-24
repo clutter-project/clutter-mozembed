@@ -81,9 +81,6 @@ static gint spawned_heads = 0;
 
 static void block_until_command (ClutterMozHeadless *moz_headless,
                                  const gchar        *command);
-static void new_window_cb (MozHeadless  *headless,
-                           MozHeadless **newEmbed,
-                           guint         chromemask);
 
 static void
 send_feedback (ClutterMozHeadless *headless, const gchar *feedback)
@@ -488,15 +485,19 @@ process_command (ClutterMozHeadless *moz_headless, gchar *command)
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
-      priv->new_input_file = g_strdup (params[0]);
-      priv->new_output_file = g_strdup (params[1]);
-      priv->new_shm_name = g_strdup (params[2]);
-      
       if (g_str_equal (command, "new-window"))
         {
-          MozHeadless *headless;
-          new_window_cb (MOZ_HEADLESS (moz_headless), &headless,
-                         MOZ_HEADLESS_FLAG_DEFAULTCHROME);
+          g_object_new (CLUTTER_TYPE_MOZHEADLESS,
+                        "input", params[0],
+                        "output", params[1],
+                        "shm", params[2],
+                        NULL);
+        }
+      else
+        {
+          priv->new_input_file = g_strdup (params[0]);
+          priv->new_output_file = g_strdup (params[1]);
+          priv->new_shm_name = g_strdup (params[2]);
         }
     }
   else

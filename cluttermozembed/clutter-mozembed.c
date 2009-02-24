@@ -105,8 +105,6 @@ struct _ClutterMozEmbedPrivate
   gint             page_height;*/
 };
 
-static void clutter_mozembed_open_pipes (ClutterMozEmbed *self);
-
 static gboolean
 separate_strings (gchar **strings, gint n_strings, gchar *string)
 {
@@ -336,8 +334,6 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
                                  input_file, output_file, shm_name);
       send_command (self, command);
       g_free (command);
-      
-      clutter_mozembed_open_pipes (new_window);
       
       g_object_ref_sink (new_window);
       g_signal_emit (self, signals[NEW_WINDOW], 0, new_window);
@@ -1234,8 +1230,9 @@ clutter_mozembed_constructed (GObject *object)
               return;
             }
         }
-      clutter_mozembed_open_pipes (self);
     }
+
+  clutter_mozembed_open_pipes (self);
 }
 
 static void
