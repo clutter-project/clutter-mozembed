@@ -1097,6 +1097,7 @@ file_changed_cb (GFileMonitor      *monitor,
                  GFileMonitorEvent  event_type,
                  ClutterMozEmbed   *self)
 {
+  gint fd;
   ClutterMozEmbedPrivate *priv = self->priv;
 
   if (event_type != G_FILE_MONITOR_EVENT_CREATED)
@@ -1108,8 +1109,8 @@ file_changed_cb (GFileMonitor      *monitor,
   priv->monitor = NULL;
 
   /* Open input channel */
-  g_debug ("Opening output file (%s)", priv->output_file);
-  priv->input = g_io_channel_new_file (priv->output_file, "r", NULL);
+  fd = open (priv->output_file, O_RDONLY | O_NONBLOCK);
+  priv->input = g_io_channel_unix_new (fd);
   g_io_channel_set_encoding (priv->input, NULL, NULL);
   g_io_channel_set_buffered (priv->input, FALSE);
   g_io_channel_set_close_on_unref (priv->input, TRUE);
@@ -1118,12 +1119,12 @@ file_changed_cb (GFileMonitor      *monitor,
                                    G_IO_NVAL | G_IO_HUP,
                                    (GIOFunc)input_io_func,
                                    self);
-  g_debug ("Opened output file");
 }
 
 static void
 clutter_mozembed_open_pipes (ClutterMozEmbed *self)
 {
+  gint fd;
   GFile *file;
   ClutterMozEmbedPrivate *priv = self->priv;
 
@@ -1143,12 +1144,12 @@ clutter_mozembed_open_pipes (ClutterMozEmbed *self)
                      G_FILE_MONITOR_EVENT_CREATED, self);
 
   /* Open output channel */
-  g_debug ("Opening input file (%s)", priv->input_file);
-  priv->output = g_io_channel_new_file (priv->input_file, "w", NULL);
+  mkfifo (priv->input_file, S_IWUSR | S_IRUSR);
+  fd = open (priv->input_file, O_RDWR | O_NONBLOCK);
+  priv->output = g_io_channel_unix_new (fd);
   g_io_channel_set_encoding (priv->output, NULL, NULL);
   g_io_channel_set_buffered (priv->output, FALSE);
   g_io_channel_set_close_on_unref (priv->output, TRUE);
-  g_debug ("Opened input file");
 }
 
 static void
@@ -1200,18 +1201,6 @@ clutter_mozembed_constructed (GObject *object)
   
   spawned_windows++;
   
-  /* Create named pipes */
-  if (mkfifo (priv->output_file, S_IRUSR | S_IWUSR) == -1)
-    {
-      g_warning ("Error creating output pipe (%s)", argv[1]);
-      return;
-    }
-  if (mkfifo (priv->input_file, S_IRUSR | S_IWUSR) == -1)
-    {
-      g_warning ("Error creating input pipe (%s)", argv[2]);
-      return;
-    }
-
   /* Spawn renderer */
   argv[1] = priv->output_file;
   argv[2] = priv->input_file;
@@ -1219,25 +1208,32 @@ clutter_mozembed_constructed (GObject *object)
 
   if (priv->spawn)
     {
-      success = g_spawn_async_with_pipes (NULL,
-                                          argv,
-                                          NULL,
-                                          G_SPAWN_SEARCH_PATH,
-                                          NULL,
-                                          NULL,
-                                          &priv->child_pid,
-                                          NULL,
-                                          NULL,
-                                          NULL,
-                                          &error);
-      
-      if (!success)
+      if (g_getenv ("CLUTTER_MOZEMBED_DEBUG"))
         {
-          g_warning ("Error spawning renderer: %s", error->message);
-          g_error_free (error);
-          return;
+          g_message ("Waiting for '%s %s %s %s' to be run",
+                     argv[0], argv[1], argv[2], argv[3]);
         }
-      
+      else
+        {
+          success = g_spawn_async_with_pipes (NULL,
+                                              argv,
+                                              NULL,
+                                              G_SPAWN_SEARCH_PATH,
+                                              NULL,
+                                              NULL,
+                                              &priv->child_pid,
+                                              NULL,
+                                              NULL,
+                                              NULL,
+                                              &error);
+          
+          if (!success)
+            {
+              g_warning ("Error spawning renderer: %s", error->message);
+              g_error_free (error);
+              return;
+            }
+        }
       clutter_mozembed_open_pipes (self);
     }
 }

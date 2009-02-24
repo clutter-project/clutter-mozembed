@@ -230,14 +230,10 @@ new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
   ClutterMozHeadless *moz_headless = CLUTTER_MOZHEADLESS (headless);
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
 
-  g_debug ("Creating new window (possibly)");
-  
   feedback = g_strdup_printf ("new-window? %d", chromemask);
   send_feedback (moz_headless, feedback);
   g_free (feedback);
-  g_debug ("Waiting for response");
   block_until_command (moz_headless, "new-window-response");
-  g_debug ("Got response");
 
   if (priv->new_input_file && priv->new_output_file && priv->new_shm_name)
     {
@@ -246,7 +242,6 @@ new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
                                 "input", priv->new_input_file,
                                 "shm", priv->new_shm_name,
                                 NULL);
-      g_debug ("Created window");
     }
 
   g_free (priv->new_input_file);
@@ -691,6 +686,8 @@ file_changed_cb (GFileMonitor       *monitor,
                  GFileMonitorEvent   event_type,
                  ClutterMozHeadless *self)
 {
+  gint fd;
+
   ClutterMozHeadlessPrivate *priv = self->priv;
 
   if (event_type != G_FILE_MONITOR_EVENT_CREATED)
@@ -702,8 +699,8 @@ file_changed_cb (GFileMonitor       *monitor,
   priv->monitor = NULL;
 
   /* Opening input channel */
-  g_debug ("Opening input file (%s)", priv->input_file);
-  priv->input = g_io_channel_new_file (priv->input_file, "r", NULL);
+  fd = open (priv->input_file, O_RDONLY | O_NONBLOCK);
+  priv->input = g_io_channel_unix_new (fd);
   g_io_channel_set_encoding (priv->input, NULL, NULL);
   g_io_channel_set_buffered (priv->input, FALSE);
   g_io_channel_set_close_on_unref (priv->input, TRUE);
@@ -711,23 +708,23 @@ file_changed_cb (GFileMonitor       *monitor,
                   G_IO_IN | G_IO_ERR | G_IO_NVAL | G_IO_HUP,
                   (GIOFunc)input_io_func,
                   self);
-  g_debug ("Opened input file");
 }
 
 static void
 clutter_mozheadless_constructed (GObject *object)
 {
+  gint fd;
   GFile *file;
 
   ClutterMozHeadless *self = CLUTTER_MOZHEADLESS (object);
   ClutterMozHeadlessPrivate *priv = self->priv;
   
-  g_debug ("Opening output file (%s)", priv->output_file);
-  priv->output = g_io_channel_new_file (priv->output_file, "w", NULL);
+  mkfifo (priv->output_file, S_IWUSR | S_IRUSR);
+  fd = open (priv->output_file, O_RDWR | O_NONBLOCK);
+  priv->output = g_io_channel_unix_new (fd);
   g_io_channel_set_encoding (priv->output, NULL, NULL);
   g_io_channel_set_buffered (priv->output, FALSE);
   g_io_channel_set_close_on_unref (priv->output, TRUE);
-  g_debug ("Opened output file");
 
   file = g_file_new_for_path (priv->input_file);
   priv->monitor = g_file_monitor_file (file, 0, NULL, NULL);
