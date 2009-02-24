@@ -81,6 +81,9 @@ static gint spawned_heads = 0;
 
 static void block_until_command (ClutterMozHeadless *moz_headless,
                                  const gchar        *command);
+static void new_window_cb (MozHeadless  *headless,
+                           MozHeadless **newEmbed,
+                           guint         chromemask);
 
 static void
 send_feedback (ClutterMozHeadless *headless, const gchar *feedback)
@@ -477,7 +480,8 @@ process_command (ClutterMozHeadless *moz_headless, gchar *command)
     {
       g_object_unref (moz_headless);
     }
-  else if (g_str_equal (command, "new-window-response"))
+  else if (g_str_equal (command, "new-window-response") ||
+           g_str_equal (command, "new-window"))
     {
       gchar *params[3];
 
@@ -487,6 +491,13 @@ process_command (ClutterMozHeadless *moz_headless, gchar *command)
       priv->new_input_file = g_strdup (params[0]);
       priv->new_output_file = g_strdup (params[1]);
       priv->new_shm_name = g_strdup (params[2]);
+      
+      if (g_str_equal (command, "new-window"))
+        {
+          MozHeadless *headless;
+          new_window_cb (MOZ_HEADLESS (moz_headless), &headless,
+                         MOZ_HEADLESS_FLAG_DEFAULTCHROME);
+        }
     }
   else
     {
@@ -500,6 +511,7 @@ input_io_func (GIOChannel          *source,
                ClutterMozHeadless  *moz_headless)
 {
   /* FYI: Maximum URL length in IE is 2083 characters */
+  GIOStatus status;
   gchar buf[4096];
   gsize length;
 
@@ -507,8 +519,9 @@ input_io_func (GIOChannel          *source,
   
   switch (condition) {
     case G_IO_IN :
-      if (g_io_channel_read_chars (source, buf, sizeof (buf), &length, &error)
-          == G_IO_STATUS_NORMAL) {
+      status = g_io_channel_read_chars (source, buf, sizeof (buf),
+                                        &length, &error);
+      if (status == G_IO_STATUS_NORMAL) {
         gsize current_length = 0;
         while (current_length < length)
           {
@@ -516,10 +529,11 @@ input_io_func (GIOChannel          *source,
             current_length += strlen (&buf[current_length]) + 1;
             process_command (moz_headless, command);
           }
-      } else {
+      } else if (status == G_IO_STATUS_ERROR) {
         g_warning ("Error reading from source: %s", error->message);
         g_error_free (error);
-      }
+      } else if (status == G_IO_STATUS_EOF)
+        break;
       return TRUE;
 
     case G_IO_ERR :

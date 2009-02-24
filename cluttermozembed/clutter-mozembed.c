@@ -1424,6 +1424,32 @@ clutter_mozembed_new (void)
   return CLUTTER_ACTOR (g_object_new (CLUTTER_TYPE_MOZEMBED, NULL));
 }
 
+ClutterActor *
+clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
+{
+  gchar *input, *output, *shm, *command;
+  ClutterActor *mozembed;
+
+  if (!parent)
+    return clutter_mozembed_new ();
+
+  /* Open up a new window using the same process as the provided
+   * ClutterMozEmbed.
+   */
+  mozembed = g_object_new (CLUTTER_TYPE_MOZEMBED, "spawn", FALSE, NULL);
+  g_object_get (G_OBJECT (mozembed),
+                "input", &input,
+                "output", &output,
+                "shm", &shm,
+                NULL);
+
+  command = g_strdup_printf ("new-window %s %s %s", input, output, shm);
+  send_command (parent, command);
+  g_free (command);
+  
+  return CLUTTER_ACTOR (mozembed);
+}
+
 void
 clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri)
 {
