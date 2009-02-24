@@ -18,6 +18,8 @@
  * Authored by Chris Lord <chris@linux.intel.com>
  */
 
+#include <gtk/gtk.h>
+#include <X11/Xlib.h>
 #include <glib.h>
 #include <glib/gstdio.h>
 #include <gio/gio.h>
@@ -980,14 +982,19 @@ int
 main (int argc, char **argv)
 {
   ClutterMozHeadless *moz_headless;
+  Window viewport_window;
 
   g_type_init ();
   
-  if (argc != 4)
+  if (argc != 5)
     {
-      printf ("Usage: %s <output pipe> <input pipe> <shm name>\n", argv[0]);
+      printf ("Usage: %s <output pipe> <input pipe> <shm name> <viewport_window>\n", argv[0]);
       return 1;
     }
+
+  gtk_init (&argc, &argv);
+
+  viewport_window = (Window)strtoul (argv[4], NULL, 10);
   
   /* Initialise mozilla */
   moz_headless_set_path (MOZHOME);
@@ -997,6 +1004,9 @@ main (int argc, char **argv)
                                "input", argv[2],
                                "shm", argv[3],
                                NULL);
+  /* TODO: add a property to clutter-mozheadless for this... */
+  moz_headless_set_plugin_window (MOZ_HEADLESS (moz_headless),
+                                  viewport_window);
 
   /* Begin */
   mainloop = g_main_loop_new (NULL, FALSE);

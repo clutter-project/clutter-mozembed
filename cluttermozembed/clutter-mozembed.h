@@ -21,6 +21,7 @@
 #ifndef _CLUTTER_MOZEMBED
 #define _CLUTTER_MOZEMBED
 
+#include <X11/Xlib.h>
 #include <glib-object.h>
 #include <clutter/clutter.h>
 
@@ -75,6 +76,9 @@ ClutterActor *clutter_mozembed_new_with_parent (ClutterMozEmbed *parent);
 
 GList *clutter_mozembed_get_live_previews ();
 
+ClutterActor*
+clutter_mozembed_new_with_top_level_x_window (Window top_level_x_window);
+
 void clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri);
 const gchar *clutter_mozembed_get_location (ClutterMozEmbed *mozembed);
 const gchar *clutter_mozembed_get_title (ClutterMozEmbed *mozembed);
@@ -85,6 +89,8 @@ void clutter_mozembed_forward (ClutterMozEmbed *mozembed);
 void clutter_mozembed_stop (ClutterMozEmbed *mozembed);
 void clutter_mozembed_refresh (ClutterMozEmbed *mozembed);
 void clutter_mozembed_reload (ClutterMozEmbed *mozembed);
+Window clutter_mozembed_get_top_level_x_window (ClutterMozEmbed *mozembed);
+Window clutter_mozembed_get_plugin_viewport (ClutterMozEmbed *mozembed);
 
 G_END_DECLS
 
