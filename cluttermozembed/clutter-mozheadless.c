@@ -190,7 +190,9 @@ updated_cb (MozHeadless        *headless,
             gint                height)
 {
   static gint n_missed_updates = 0;
+
   /*gint doc_width, doc_height, sx, sy*/;
+  GList *v;
   gchar *feedback;
   
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (headless)->priv;
@@ -247,7 +249,20 @@ updated_cb (MozHeadless        *headless,
   send_feedback_all (CLUTTER_MOZHEADLESS (headless), feedback);
   g_free (feedback);
   
-  priv->waiting_for_ack = TRUE;
+  for (v = priv->views; v; v = v->next)
+    {
+      ClutterMozHeadlessView *view = v->data;
+
+      /* This shouldn't happen (because if we're waiting for an ack, we've
+       * frozen updates), but put this check in just in case.
+       */
+      if (view->waiting_for_ack)
+        continue;
+
+      priv->waiting_for_ack ++;
+      view->waiting_for_ack = TRUE;
+    }
+
   moz_headless_freeze_updates (headless, TRUE);
 }
 
@@ -296,6 +311,9 @@ file_changed_cb (GFileMonitor           *monitor,
                  ClutterMozHeadlessView *view)
 {
   gint fd;
+  gchar *feedback;
+  
+  ClutterMozHeadlessPrivate *priv = view->parent->priv;
 
   if (event_type != G_FILE_MONITOR_EVENT_CREATED)
     return;
@@ -315,6 +333,19 @@ file_changed_cb (GFileMonitor           *monitor,
                   G_IO_IN | G_IO_ERR | G_IO_NVAL | G_IO_HUP,
                   (GIOFunc)input_io_func,
                   view);
+
+  /* Send an update to the new view */
+  feedback = g_strdup_printf ("update 0 0 %d %d %d %d",
+                              priv->surface_width, priv->surface_height,
+                              priv->surface_width, priv->surface_height);
+  send_feedback (view, feedback);
+  g_free (feedback);
+  
+  if (!priv->waiting_for_ack)
+    moz_headless_freeze_updates (MOZ_HEADLESS (view->parent), TRUE);
+
+  view->waiting_for_ack = TRUE;
+  priv->waiting_for_ack ++;
 }
 
 static void
