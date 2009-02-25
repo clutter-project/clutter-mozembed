@@ -531,21 +531,15 @@ clutter_mozembed_dispose (GObject *object)
       priv->monitor = NULL;
     }
   
-  if (priv->child_pid)
-    {
-      g_spawn_close_pid (priv->child_pid);
-      priv->child_pid = 0;
-    }
+  if (priv->watch_id) {
+    g_source_remove (priv->watch_id);
+    priv->watch_id = 0;
+  }
 
   if (priv->input)
     {
       GError *error = NULL;
 
-      if (priv->watch_id) {
-        g_source_remove (priv->watch_id);
-        priv->watch_id = 0;
-      }
-      
       if (g_io_channel_shutdown (priv->input, FALSE, &error) ==
           G_IO_STATUS_ERROR)
         {
