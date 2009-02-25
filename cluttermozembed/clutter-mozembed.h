@@ -89,9 +89,7 @@ void clutter_mozembed_forward (ClutterMozEmbed *mozembed);
 void clutter_mozembed_stop (ClutterMozEmbed *mozembed);
 void clutter_mozembed_refresh (ClutterMozEmbed *mozembed);
 void clutter_mozembed_reload (ClutterMozEmbed *mozembed);
-Window clutter_mozembed_get_top_level_x_window (ClutterMozEmbed *mozembed);
 Window clutter_mozembed_get_plugin_viewport (ClutterMozEmbed *mozembed);
-
 G_END_DECLS
 
 #endif /* _CLUTTER_MOZEMBED */
