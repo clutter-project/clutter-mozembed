@@ -137,6 +137,7 @@ update (ClutterMozEmbed *self,
         gint             surface_width,
         gint             surface_height)
 {
+  gboolean result;
   guint tex_width, tex_height;
 
   ClutterMozEmbedPrivate *priv = self->priv;
@@ -157,8 +158,9 @@ update (ClutterMozEmbed *self,
    * size, ignore it - it just means we've resized in the middle of the
    * backend drawing and we'll get a new update almost immediately anyway.
    */
-  if ((surface_width != tex_width) || (surface_height != tex_height))
-    return;
+  if (!priv->read_only)
+    if ((surface_width != tex_width) || (surface_height != tex_height))
+      return;
   
   if (!priv->image_data)
     {
@@ -171,18 +173,32 @@ update (ClutterMozEmbed *self,
   /*g_debug ("Reading data");*/
 
   /* Copy data to texture */
-  if (!clutter_texture_set_area_from_rgb_data (
-         CLUTTER_TEXTURE (self),
-         priv->image_data + (x*4) + (y*surface_width*4),
-         TRUE,
-         x,
-         y,
-         width,
-         height,
-         surface_width*4,
-         4,
-         CLUTTER_TEXTURE_RGB_FLAG_BGR,
-         &error))
+  if ((x == 0) && (y == 0) && (width == surface_width) &&
+      (height == surface_height))
+    result = clutter_texture_set_from_rgb_data (CLUTTER_TEXTURE (self),
+                                                priv->image_data,
+                                                TRUE,
+                                                surface_width,
+                                                surface_height,
+                                                surface_width * 4,
+                                                4,
+                                                CLUTTER_TEXTURE_RGB_FLAG_BGR,
+                                                &error);
+  else
+    result = clutter_texture_set_area_from_rgb_data (CLUTTER_TEXTURE (self),
+                                                     priv->image_data + (x*4) +
+                                                     (y*surface_width*4),
+                                                     TRUE,
+                                                     x,
+                                                     y,
+                                                     width,
+                                                     height,
+                                                     surface_width * 4,
+                                                     4,
+                                                     CLUTTER_TEXTURE_RGB_FLAG_BGR,
+                                                     &error);
+
+  if (!result)
     {
       g_warning ("Error setting texture data: %s", error->message);
       g_error_free (error);
@@ -594,7 +610,7 @@ clutter_mozembed_allocate (ClutterActor          *actor,
   clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
                                  &tex_width, &tex_height);
   
-  if ((tex_width != width) || (tex_height != height))
+  if ((!priv->read_only) && ((tex_width != width) || (tex_height != height)))
     {
       /* Fill the texture with white when resizing */
       guchar *data = g_malloc (width * height * 4);
@@ -1455,6 +1471,79 @@ clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
   g_free (command);
   
   return CLUTTER_ACTOR (mozembed);
+}
+
+GList *
+clutter_mozembed_get_live_previews ()
+{
+  GDir *dir;
+  const gchar *filename;
+
+  GList *views = NULL;
+  GError *error = NULL;
+
+  /* FIXME: This is very hacky, really we want to advertise the open tabs
+   * over dbus or something like that...
+   */
+  dir = g_dir_open (g_get_tmp_dir (), 0, &error);
+  
+  if (!dir)
+    {
+      g_warning ("Error opening temporary files directory: %s", error->message);
+      g_error_free (error);
+      return NULL;
+    }
+
+  while ((filename = g_dir_read_name (dir)))
+    {
+      gint fd;
+      ClutterActor *mozembed;
+      gchar *full_file, *input, *output, *command;
+
+      if (!strstr (filename, "clutter-mozheadless-"))
+        continue;
+      
+      full_file = g_build_filename (g_get_tmp_dir (), filename, NULL);
+
+      /* Just a note, we won't use this method for long hopefully, but
+       * I've *no* idea what happens when two processes are writing on the
+       * same pipe in terms of the possibility of interleaved messages...
+       */
+      
+      /* Open the pipe and ask it to create a new view */
+      fd = open (full_file, O_WRONLY | O_NDELAY);
+      
+      if (fd)
+        {
+          /* Create a read-only mozembed */
+          mozembed = g_object_new (CLUTTER_TYPE_MOZEMBED,
+                                   "read-only", TRUE,
+                                   "spawn", FALSE,
+                                   NULL);
+
+          /* Get the pipe names */
+          g_object_get (G_OBJECT (mozembed),
+                        "input", &input,
+                        "output", &output,
+                        NULL);
+
+          command = g_strdup_printf ("new-view %s %s", input, output);
+          write (fd, command, strlen (command) + 1);
+          g_free (command);
+
+          close (fd);
+          g_free (input);
+          g_free (output);
+
+          views = g_list_append (views, mozembed);
+        }
+
+      g_free (full_file);
+    }
+  
+  g_dir_close (dir);
+  
+  return views;
 }
 
 void

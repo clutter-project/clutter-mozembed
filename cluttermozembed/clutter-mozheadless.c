@@ -425,8 +425,6 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
   MozHeadless *headless = MOZ_HEADLESS (moz_headless);
   
-  /*g_debug ("Command: %s", command);*/
-  
   /* TODO: Of course, we should make this a binary format - it's this way 
    *       to ease debugging.
    */
@@ -616,7 +614,9 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
-      clutter_mozheadless_create_view (moz_headless, params[0], params[1]);
+      clutter_mozheadless_create_view (moz_headless,
+                                       g_strdup (params[0]),
+                                       g_strdup (params[1]));
     }
   else if (g_str_equal (command, "new-window-response") ||
            g_str_equal (command, "new-window"))
@@ -678,8 +678,8 @@ disconnect_view (ClutterMozHeadlessView *view)
       
       g_io_channel_unref (view->input);
       view->input = NULL;
-      g_remove (view->input_file);
     }
+  g_remove (view->input_file);
 
   if (view->output)
     {
@@ -694,8 +694,8 @@ disconnect_view (ClutterMozHeadlessView *view)
       
       g_io_channel_unref (view->output);
       view->output = NULL;
-      g_remove (view->output_file);
     }
+  g_remove (view->output_file);
   
   g_free (view->output_file);
   g_free (view->input_file);
