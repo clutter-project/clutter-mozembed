@@ -334,7 +334,11 @@ file_changed_cb (GFileMonitor           *monitor,
                   (GIOFunc)input_io_func,
                   view);
 
-  /* Send an update to the new view */
+  /* Send the shm name and an update to the new view */
+  feedback = g_strdup_printf ("shm-name %s", priv->shm_name);
+  send_feedback (view, feedback);
+  g_free (feedback);
+
   feedback = g_strdup_printf ("update 0 0 %d %d %d %d",
                               priv->surface_width, priv->surface_height,
                               priv->surface_width, priv->surface_height);
@@ -437,7 +441,7 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
   if (priv->sync_call && g_str_equal (command, priv->sync_call))
     priv->sync_call = NULL;
 
-  if (g_str_equal (command, "ack"))
+  if (g_str_equal (command, "ack!"))
     {
       view->waiting_for_ack = FALSE;
       priv->waiting_for_ack --;
@@ -604,6 +608,15 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
   else if (g_str_equal (command, "quit"))
     {
       g_object_unref (moz_headless);
+    }
+  else if (g_str_equal (command, "new-view"))
+    {
+      gchar *params[2];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+      
+      clutter_mozheadless_create_view (moz_headless, params[0], params[1]);
     }
   else if (g_str_equal (command, "new-window-response") ||
            g_str_equal (command, "new-window"))

@@ -19,6 +19,7 @@
  */
 
 #include "clutter-mozembed.h"
+#include <glib/gstdio.h>
 #include <gio/gio.h>
 #include <moz-headless.h>
 #include <stdlib.h>
@@ -200,7 +201,8 @@ send_command (ClutterMozEmbed *mozembed, const gchar *command)
       return;
     }
   
-  if ((mozembed->priv->read_only) && (command[strlen(command)-1] != '?'))
+  if ((mozembed->priv->read_only) && (command[strlen(command)-1] != '?') &&
+      (command[strlen(command)-1] != '!'))
     return;
   
   /*g_debug ("Sending command: %s", command);*/
@@ -342,6 +344,11 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
   else if (g_str_equal (command, "closed"))
     {
       g_signal_emit (self, signals[CLOSED], 0);
+    }
+  else if (g_str_equal (command, "shm-name"))
+    {
+      g_free (priv->shm_name);
+      priv->shm_name = g_strdup (detail);
     }
   else
     {
@@ -557,6 +564,9 @@ clutter_mozembed_finalize (GObject *object)
 {
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
   
+  g_remove (priv->output_file);
+  g_remove (priv->input_file);
+  
   g_free (priv->location);
   g_free (priv->title);
   g_free (priv->input_file);
@@ -622,7 +632,7 @@ clutter_mozembed_paint (ClutterActor *actor)
   if (priv->new_data && CLUTTER_ACTOR_IS_VISIBLE (actor))
     {
       priv->new_data = FALSE;
-      send_command (self, "ack");
+      send_command (self, "ack!");
     }
 }
 
