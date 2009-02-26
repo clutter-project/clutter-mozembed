@@ -1,6 +1,12 @@
 
+#include <config.h>
+
 #include <clutter/clutter.h>
 #include "clutter-mozembed.h"
+
+#ifdef SUPPORT_PLUGINS
+#include <gtk/gtk.h>
+#endif
 
 static void
 switch_direction_cb (ClutterTimeline *timeline)
@@ -46,7 +52,11 @@ main (int argc, char **argv)
   ClutterTimeline *timeline1, *timeline2;
   ClutterBehaviour *x_rot, *y_rot;
   ClutterActor *stage, *mozembed;
-  
+
+#ifdef SUPPORT_PLUGINS
+  gtk_init (&argc, &argv);
+#endif
+
   clutter_init (&argc, &argv);
   
   clutter_set_motion_events_frequency (60);

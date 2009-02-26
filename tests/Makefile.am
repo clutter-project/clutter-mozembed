@@ -2,10 +2,12 @@
 AM_CPPFLAGS = \
 	$(CLUTTER_CFLAGS) \
 	$(MOZILLA_CFLAGS) \
+	$(GTK_CFLAGS) \
 	-I$(top_srcdir)/cluttermozembed
 AM_LDFLAGS = \
 	$(CLUTTER_LIBS) \
-	$(MOZILLA_LIBS)
+	$(MOZILLA_LIBS) \
+	$(GTK_LIBS)
 
 noinst_PROGRAMS = \
 	test-mozembed \
