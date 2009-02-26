@@ -13,6 +13,11 @@ AM_LDFLAGS = \
 	$(CLUTTER_LIBS) \
 	$(MOZILLA_LIBS)
 
+if SUPPORT_PLUGINS
+AM_CPPFLAGS += $(GTK_CFLAGS)
+AM_LDFLAGS += $(GTK_LIBS)
+endif
+
 source_h = \
 	clutter-mozembed.h
 source_c = \

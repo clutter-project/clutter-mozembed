@@ -17,6 +17,7 @@
  *
  * Authored by Chris Lord <chris@linux.intel.com>
  */
+#include <config.h>
 
 #include "clutter-mozembed.h"
 #include <glib/gstdio.h>
@@ -29,6 +30,13 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+
+#ifdef SUPPORT_PLUGINS
+#include <X11/extensions/Xcomposite.h>
+#include <clutter/x11/clutter-x11.h>
+#include <clutter/glx/clutter-glx.h>
+#include <gdk/gdkx.h>
+#endif
 
 G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_TYPE_TEXTURE)
 
@@ -104,7 +112,27 @@ struct _ClutterMozEmbedPrivate
   gint             scroll_y;
   gint             page_width;
   gint             page_height;*/
+
+#ifdef SUPPORT_PLUGINS
+  /* The window given for us to parent a plugin viewport onto */
+  GdkWindow       *toplevel_window;
+
+  /* A window created for the purpose of clipping input for
+   * plugin windows. */
+  Window           plugin_viewport;
+
+  GList           *plugin_windows;
+  guint            plugin_viewport_width;
+#endif
 };
+
+#ifdef SUPPORT_PLUGINS
+typedef struct _PluginWindow
+{
+  gint          x, y;
+  ClutterActor *plugin_tfp;
+} PluginWindow;
+#endif
 
 static gboolean
 separate_strings (gchar **strings, gint n_strings, gchar *string)
@@ -451,6 +479,141 @@ block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
     g_warning ("Error making synchronous call to backend");
 }
 
+#ifdef SUPPORT_PLUGINS
+static PluginWindow *
+find_plugin_window (GList *plugins, Window xwindow)
+{
+  GList *tmp;
+  for (tmp = plugins; tmp != NULL; tmp = tmp->next)
+    {
+      PluginWindow *plugin_window = tmp->data;
+      Window        plugin_xwindow;
+
+      g_object_get (G_OBJECT (plugin_window->plugin_tfp),
+                    "window", &plugin_xwindow,
+                    NULL);
+
+      if (plugin_xwindow == xwindow)
+        return plugin_window;
+    }
+
+  return NULL;
+}
+
+static ClutterX11FilterReturn
+plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
+{
+  ClutterMozEmbed        *mozembed = CLUTTER_MOZEMBED (data);
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  Display                *xdpy = clutter_x11_get_default_display ();
+  PluginWindow           *plugin_window;
+  XWindowAttributes       attribs;
+  Window                  parent_win;
+  Window                  root_win;
+  Window                 *children;
+  unsigned int            n_children;
+
+  switch (xev->type)
+    {
+    case MapNotify:
+
+      if (XQueryTree (xdpy,
+                      xev->xmap.window,
+                      &root_win,
+                      &parent_win,
+                      &children,
+                      &n_children) == 0)
+        {
+          break;
+        }
+      XFree (children);
+
+      if (parent_win != priv->plugin_viewport)
+        break;
+
+      if (XGetWindowAttributes (xdpy, xev->xmap.window, &attribs)
+          == 0)
+        break;
+
+      plugin_window = g_slice_new (PluginWindow);
+      plugin_window->x = attribs.x;
+      plugin_window->y = attribs.y;
+      plugin_window->plugin_tfp =
+        clutter_glx_texture_pixmap_new_with_window (xev->xmap.window);
+
+      clutter_x11_texture_pixmap_set_automatic (
+              CLUTTER_X11_TEXTURE_PIXMAP (plugin_window->plugin_tfp),
+              TRUE);
+
+      /* We don't want the parent (viewport) window to be automatically
+       * updated with changes to the plugin window... */
+      g_object_set (G_OBJECT (plugin_window->plugin_tfp),
+                    "window-redirect-automatic",
+                    FALSE,
+                    NULL);
+
+      clutter_actor_set_parent (plugin_window->plugin_tfp,
+                                CLUTTER_ACTOR (mozembed));
+
+      priv->plugin_windows =
+        g_list_prepend (priv->plugin_windows, plugin_window);
+      clutter_actor_queue_relayout (CLUTTER_ACTOR (mozembed));
+      break;
+
+    case UnmapNotify:
+      plugin_window =
+        find_plugin_window (priv->plugin_windows, xev->xunmap.window);
+      if (!plugin_window)
+        break;
+
+      priv->plugin_windows =
+        g_list_remove (priv->plugin_windows, plugin_window);
+      clutter_actor_unparent (plugin_window->plugin_tfp);
+      g_slice_free (PluginWindow, plugin_window);
+      break;
+
+    case ConfigureNotify:
+      plugin_window =
+        find_plugin_window (priv->plugin_windows, xev->xconfigure.window);
+      if (!plugin_window)
+        break;
+
+      plugin_window->x = xev->xconfigure.x;
+      plugin_window->y = xev->xconfigure.y;
+      clutter_actor_queue_relayout (CLUTTER_ACTOR (mozembed));
+      break;
+    }
+
+  return  CLUTTER_X11_FILTER_CONTINUE;
+}
+
+static void
+on_show_cb (ClutterMozEmbed *mozembed,
+            gpointer         data)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  Display *xdpy = clutter_x11_get_default_display ();
+
+  /* Note we don't map/unmap the window since that would conflict with
+   * xcomposite and live previews of plugins windows for hidden tabs */
+  XMoveWindow (xdpy, priv->plugin_viewport, 0, 0);
+}
+
+static void
+on_hide_cb (ClutterMozEmbed *mozembed,
+            gpointer         data)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  Display *xdpy = clutter_x11_get_default_display ();
+
+  /* Note we don't map/unmap the window since that would conflict with
+   * xcomposite and live previews of plugins windows for hidden tabs */
+  XMoveWindow (xdpy, priv->plugin_viewport,
+               -priv->plugin_viewport,
+               0);
+}
+#endif
+
 static void
 clutter_mozembed_get_property (GObject *object, guint property_id,
                               GValue *value, GParamSpec *pspec)
@@ -491,7 +654,8 @@ static void
 clutter_mozembed_set_property (GObject *object, guint property_id,
                               const GValue *value, GParamSpec *pspec)
 {
-  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
+  ClutterMozEmbed *self = CLUTTER_MOZEMBED (object);
+  ClutterMozEmbedPrivate *priv = self->priv;
 
   switch (property_id) {
   case PROP_READONLY :
@@ -523,6 +687,10 @@ static void
 clutter_mozembed_dispose (GObject *object)
 {
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
+#ifdef SUPPORT_PLUGINS
+  Display                *xdpy = clutter_x11_get_default_display ();
+  GList                  *tmp;
+#endif
   
   if (priv->monitor)
     {
@@ -565,7 +733,22 @@ clutter_mozembed_dispose (GObject *object)
       g_io_channel_unref (priv->output);
       priv->output = NULL;
     }
-  
+
+#ifdef SUPPORT_PLUGINS
+  /* Note: we aren't using a saveset so this means any plugin
+   * windows currently mapped here are coming down with us too!
+   */
+  XDestroyWindow (xdpy, priv->plugin_viewport);
+
+  for (tmp = priv->plugin_windows; tmp != NULL; tmp = tmp->next)
+    {
+      PluginWindow *plugin_window = tmp->data;
+      clutter_actor_unparent (plugin_window->plugin_tfp);
+      g_slice_free (PluginWindow, plugin_window);
+    }
+  g_list_free (priv->plugin_windows);
+#endif
+
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->dispose (object);
 }
 
@@ -597,6 +780,11 @@ clutter_mozembed_allocate (ClutterActor          *actor,
   gchar *command;
   gint width, height, tex_width, tex_height;
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (actor)->priv;
+#ifdef SUPPORT_PLUGINS
+  GList *tmp;
+  Display *xdpy = clutter_x11_get_default_display ();
+  gint abs_x, abs_y;
+#endif
 
   width = CLUTTER_UNITS_TO_INT (box->x2 - box->x1);
   height = CLUTTER_UNITS_TO_INT (box->y2 - box->y1);
@@ -629,6 +817,50 @@ clutter_mozembed_allocate (ClutterActor          *actor,
   
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->
     allocate (actor, box, absolute_origin_changed);
+
+#ifdef SUPPORT_PLUGINS
+  clutter_actor_get_transformed_position (CLUTTER_ACTOR (actor),
+                                          &abs_x, &abs_y);
+  XMoveWindow (xdpy, priv->plugin_viewport, abs_x, abs_y);
+#warning "FIXME: plugin_viewport resizing needs to involve mozheadless"
+  /* FIXME
+   * Only mozheadless knows about scrollbars which affect the real
+   * viewport size. For now we assume no horizontal scrollbar, and a
+   * 50px vertical bar. */
+  if (width > 50 && height > 0)
+    XResizeWindow (xdpy, priv->plugin_viewport, width-50, height);
+    /* XResizeWindow (xdpy, priv->plugin_viewport, width-200, height-200); */
+  priv->plugin_viewport_width = width;
+
+  for (tmp = priv->plugin_windows; tmp != NULL; tmp = tmp->next)
+    {
+      PluginWindow   *plugin_window = tmp->data;
+      ClutterActor   *plugin_tfp = CLUTTER_ACTOR (plugin_window->plugin_tfp);
+      ClutterUnit     natural_width, natural_height;
+      ClutterActorBox child_box;
+
+      /* Note, the texture-from-pixmap actor is considered authorative over
+       * its width and height as opposed to us tracking the width and height
+       * of the actor according to configure notify events of the corresponding
+       * plugin window.
+       *
+       * If the tfp actor hasn't yet renamed the pixmap for the redirected
+       * window since it was last resized, then I guess it will look better if
+       * we avoid scaling whatever pixmap we currently have. */
+      clutter_actor_get_preferred_size (plugin_tfp,
+                                        NULL, NULL,
+                                        &natural_width, &natural_height);
+
+      child_box.x1 = plugin_window->x;
+      child_box.y1 = plugin_window->y;
+      child_box.x2 = plugin_window->x + natural_width;
+      child_box.y2 = plugin_window->y + natural_height;
+
+      clutter_actor_allocate (plugin_window->plugin_tfp,
+                              &child_box,
+                              absolute_origin_changed);
+    }
+#endif
 }
 
 static void
@@ -636,9 +868,27 @@ clutter_mozembed_paint (ClutterActor *actor)
 {
   ClutterMozEmbed *self = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = self->priv;
+#ifdef SUPPORT_PLUGINS
+  ClutterGeometry geom;
+  GList *tmp;
+#endif
 
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->paint (actor);
-  
+
+#ifdef SUPPORT_PLUGINS
+  clutter_actor_get_allocation_geometry (actor, &geom);
+  cogl_clip_push (geom.x, geom.y, geom.width, geom.height);
+  for (tmp = priv->plugin_windows; tmp != NULL; tmp = tmp->next)
+    {
+      PluginWindow *plugin_window = tmp->data;
+      ClutterActor *plugin_tfp = CLUTTER_ACTOR (plugin_window->plugin_tfp);
+
+      if (CLUTTER_ACTOR_IS_VISIBLE (plugin_tfp))
+        clutter_actor_paint (plugin_tfp);
+    }
+  cogl_clip_pop ();
+#endif
+
   if (priv->new_data && CLUTTER_ACTOR_IS_VISIBLE (actor))
     {
       priv->new_data = FALSE;
@@ -1179,6 +1429,9 @@ clutter_mozembed_constructed (GObject *object)
     NULL, /* Output pipe */
     NULL, /* Input pipe */
     NULL, /* SHM name */
+#ifdef SUPPORT_PLUGINS
+    NULL, /* Top level X Window */
+#endif
     NULL
   };
 
@@ -1221,7 +1474,10 @@ clutter_mozembed_constructed (GObject *object)
   argv[1] = priv->output_file;
   argv[2] = priv->input_file;
   argv[3] = priv->shm_name;
-
+#ifdef SUPPORT_PLUGINS
+  argv[4] = g_strdup_printf ("%lu", (unsigned long)
+                             priv->plugin_viewport);
+#endif
   if (priv->spawn)
     {
       if (g_getenv ("CLUTTER_MOZEMBED_DEBUG"))
@@ -1366,6 +1622,7 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                          G_PARAM_STATIC_BLURB |
                                                          G_PARAM_CONSTRUCT_ONLY));
 
+
   signals[PROGRESS] =
     g_signal_new ("progress",
                   G_TYPE_FROM_CLASS (klass),
@@ -1425,7 +1682,14 @@ static void
 clutter_mozembed_init (ClutterMozEmbed *self)
 {
   ClutterMozEmbedPrivate *priv = self->priv = MOZEMBED_PRIVATE (self);
-  
+#ifdef SUPPORT_PLUGINS
+  Display *xdpy = clutter_x11_get_default_display ();
+  unsigned long white;
+  ClutterStage *stage;
+  Window stage_xwin;
+  int composite_major, composite_minor;
+#endif
+ 
   priv->motion_ack = TRUE;
   priv->spawn = TRUE;
 
@@ -1433,6 +1697,61 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   
   /* Turn off sync-size (we manually size the texture on allocate) */
   g_object_set (G_OBJECT (self), "sync-size", FALSE, NULL);
+
+#ifdef SUPPORT_PLUGINS
+  g_signal_connect (G_OBJECT (self), "show",
+                    G_CALLBACK (on_show_cb),
+                    NULL);
+  g_signal_connect (G_OBJECT (self), "hide",
+                    G_CALLBACK (on_hide_cb),
+                    NULL);
+
+  stage = CLUTTER_STAGE (clutter_stage_get_default ());
+  stage_xwin = clutter_x11_get_stage_window (stage);
+  priv->toplevel_window = gdk_window_foreign_new (stage_xwin);
+
+  /* NB: The plugin viewport will be repositioned within
+   * mozembed::allocate */
+  white = WhitePixel (xdpy, DefaultScreen (xdpy));
+  priv->plugin_viewport =
+    XCreateSimpleWindow (xdpy,
+                         GDK_WINDOW_XID (priv->toplevel_window),
+                         -100, -100,
+                         100, 100,
+                         0, /* border width */
+                         white, /* border color */
+                         white); /* bg color */
+
+  /* Note, unlike the individual plugin windows which we redirect using clutter,
+   * we redirect the viewport window directly since we want to be sure we never
+   * name a pixmap for it. NB: The viewport window is only needed for input
+   * clipping.
+   */
+  if (XCompositeQueryVersion (xdpy, &composite_major, &composite_minor)
+      != True)
+    {
+      g_critical ("The composite extension is required for redirecting "
+                  "plugin windows");
+    }
+
+  XCompositeRedirectWindow (xdpy,
+                            priv->plugin_viewport,
+                            CompositeRedirectManual);
+
+  XMapWindow (xdpy, priv->plugin_viewport);
+
+  /* We need to redirect the map requests of plugin windows so we have the
+   * oppertunity to redirect them offscreen first... */
+  XSelectInput (xdpy, priv->plugin_viewport,
+                SubstructureNotifyMask);
+
+  clutter_x11_add_filter (plugin_viewport_x_event_filter,
+                          (gpointer)self);
+
+  XMapWindow (xdpy, priv->plugin_viewport);
+
+  priv->plugin_windows = NULL;
+#endif
 }
 
 ClutterActor *
