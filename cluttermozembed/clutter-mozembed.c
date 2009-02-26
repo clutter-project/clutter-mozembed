@@ -119,6 +119,7 @@ struct _ClutterMozEmbedPrivate
   Window           plugin_viewport;
 
   GList           *plugin_windows;
+  guint            plugin_viewport_width;
 };
 
 typedef struct _PluginWindow
@@ -127,10 +128,6 @@ typedef struct _PluginWindow
   ClutterActor *plugin_tfp;
 } PluginWindow;
 
-
-static void
-clutter_mozembed_set_top_level_x_window (ClutterMozEmbed *mozembed,
-                                         Window           toplevel_window);
 
 static gboolean
 separate_strings (gchar **strings, gint n_strings, gchar *string)
@@ -747,6 +744,8 @@ clutter_mozembed_allocate (ClutterActor          *actor,
   gint width, height, tex_width, tex_height;
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (actor)->priv;
   GList *tmp;
+  Display *xdpy = clutter_x11_get_default_display ();
+  gint abs_x, abs_y;
 
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->
     allocate (actor, box, absolute_origin_changed);
@@ -756,6 +755,19 @@ clutter_mozembed_allocate (ClutterActor          *actor,
   
   clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
                                  &tex_width, &tex_height);
+
+  clutter_actor_get_transformed_position (CLUTTER_ACTOR (actor),
+                                          &abs_x, &abs_y);
+  XMoveWindow (xdpy, priv->plugin_viewport, abs_x, abs_y);
+#warning "FIXME: plugin_viewport resizing needs to involve mozheadless"
+  /* FIXME
+   * Only mozheadless knows about scrollbars which affect the real
+   * viewport size. For now we assume no horizontal scrollbar, and a
+   * 50px vertical bar. */
+  if (width > 50 && height > 0)
+    XResizeWindow (xdpy, priv->plugin_viewport, width-50, height);
+    //XResizeWindow (xdpy, priv->plugin_viewport, width-200, height-200);
+  priv->plugin_viewport_width = width;
   
   if ((!priv->read_only) && ((tex_width != width) || (tex_height != height)))
     {
@@ -1618,6 +1630,30 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
 }
 
 static void
+on_show_cb (ClutterMozEmbed *mozembed,
+            gpointer         data)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  Display *xdpy = clutter_x11_get_default_display ();
+
+  XMapWindow (xdpy, priv->plugin_viewport);
+}
+
+static void
+on_hide_cb (ClutterMozEmbed *mozembed,
+            gpointer         data)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  Display *xdpy = clutter_x11_get_default_display ();
+
+  /* Note we don't unmap the window since that would disable live
+   * previews of plugins windows for hidden tabs */
+  XMoveWindow (xdpy, priv->plugin_viewport,
+               -priv->plugin_viewport,
+               0);
+}
+
+static void
 clutter_mozembed_init (ClutterMozEmbed *self)
 {
   ClutterMozEmbedPrivate *priv = self->priv = MOZEMBED_PRIVATE (self);
@@ -1638,17 +1674,24 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   /* Turn off sync-size (we manually size the texture on allocate) */
   g_object_set (G_OBJECT (self), "sync-size", FALSE, NULL);
 
+  g_signal_connect (G_OBJECT (self), "show",
+                    G_CALLBACK (on_show_cb),
+                    NULL);
+  g_signal_connect (G_OBJECT (self), "hide",
+                    G_CALLBACK (on_hide_cb),
+                    NULL);
+
   stage = CLUTTER_STAGE (clutter_stage_get_default ());
   stage_xwin = clutter_x11_get_stage_window (stage);
   priv->toplevel_window = gdk_window_foreign_new (stage_xwin);
 
-  /* NB: It's the browsers responsability to position the viewport window
-   * so we just place it at (0, 0) here... */
+  /* NB: The plugin viewport will be repositioned within
+   * mozembed::allocate */
   white = WhitePixel (xdpy, DefaultScreen (xdpy));
   priv->plugin_viewport =
     XCreateSimpleWindow (xdpy,
                          GDK_WINDOW_XID (priv->toplevel_window),
-                         0, 0,
+                         -100, -100,
                          100, 100,
                          0, /* border width */
                          white, /* border color */
@@ -1669,6 +1712,8 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   XCompositeRedirectWindow (xdpy,
                             priv->plugin_viewport,
                             CompositeRedirectManual);
+
+  XMapWindow (xdpy, priv->plugin_viewport);
 
   /* We need to redirect the map requests of plugin windows so we have the
    * oppertunity to redirect them offscreen first... */
@@ -1786,36 +1831,6 @@ clutter_mozembed_get_live_previews ()
   return views;
 }
 
-/**
- * clutter_mozembed_new_with_top_level_x_window:
- * @top_level_x_window: A top level window on which a plugin viewport window
- *                      can be created.
- *
- * To support windowed plugins it is necissary to have an X window under which
- * plugin windows can be mapped; this is called the "plugin viewport" and always
- * has the same size as the corresponding ClutterMozEmbed actor. In turn the
- * plugin viewport needs to be mapped somewhere; the top level window.
- *
- * If you need to support windowed mozilla plugins you must supply a top level
- * window on which a plugin viewport can be created. It is then your
- * responsability to position the viewport window within the top level window
- * so that it lies directly under the ClutterMozEmbed actor.
- *
- * Because the viewport window is internally redirected offscreen and so are the
- * plugin windows, the window will be invisible when mapped, but it required for
- * input into the plugin windows to work.
- *
- * If you need to disable input to the plugins or if you apply a transient scale
- * to the ClutterMozEmbed actor you should unmap the viewport window.
- */
-ClutterActor *
-clutter_mozembed_new_with_top_level_x_window (Window top_level_x_window)
-{
-  return CLUTTER_ACTOR (g_object_new (CLUTTER_TYPE_MOZEMBED,
-                                      "top-level-x-window", top_level_x_window,
-                                      NULL));
-}
-
 void
 clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri)
 {
@@ -1889,29 +1904,4 @@ clutter_mozembed_reload (ClutterMozEmbed *mozembed)
 {
   send_command (mozembed, "reload");
 }
-
-/**
- * clutter_mozembed_get_plugin_viewport:
- * @mozembed: A mozilla headless Clutter actor
- *
- * This function returns a window which has been redirected using the X
- * composite extension such that the browser can position and resize this
- * window directly under the @mozembed actor but the window will not be
- * visible. The purpose of the window is to clip the input regions of the
- * plugin windows parented under it.
- *
- * The browser can unmap this window to disable input which it will need to
- * do when @mozembed is hidden or scaled.
- *
- * Returns: The plugin viewport window or None if you did not construct
- * @mozembed with a top level x window.
- */
-Window
-clutter_mozembed_get_plugin_viewport (ClutterMozEmbed *mozembed)
-{
-  g_return_val_if_fail (CLUTTER_IS_MOZEMBED (mozembed), None);
-
-  return mozembed->priv->plugin_viewport;
-}
-
 
