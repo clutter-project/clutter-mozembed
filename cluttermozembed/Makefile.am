@@ -3,17 +3,21 @@ AM_CPPFLAGS = \
 	-DPKGDATADIR=\"$(pkgdatadir)\" \
 	$(GOBJECT_CFLAGS) \
 	$(GTHREAD_CFLAGS) \
-	$(GTK_CFLAGS) \
 	$(CLUTTER_CFLAGS) \
 	$(MOZILLA_CFLAGS) \
 	-DMOZHOME=\"$(MOZHOME)\" \
 	-Wall
+
 AM_LDFLAGS = \
 	$(GOBJECT_LIBS) \
 	$(GTHREAD_LIBS) \
-	$(GTK_LIBS) \
 	$(CLUTTER_LIBS) \
 	$(MOZILLA_LIBS)
+
+if SUPPORT_PLUGINS
+AM_CPPFLAGS += $(GTK_CFLAGS)
+AM_LDFLAGS += $(GTK_LIBS)
+endif
 
 source_h = \
 	clutter-mozembed.h
