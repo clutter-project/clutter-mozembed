@@ -652,6 +652,13 @@ disconnect_view (ClutterMozHeadlessView *view)
 {
   ClutterMozHeadlessPrivate *priv = view->parent->priv;
 
+  if (view->waiting_for_ack)
+    {
+      priv->waiting_for_ack --;
+      if (priv->waiting_for_ack == 0)
+        moz_headless_freeze_updates (MOZ_HEADLESS (view->parent), FALSE);
+    }
+
   if (view->monitor)
     {
       g_file_monitor_cancel (view->monitor);
@@ -757,14 +764,8 @@ input_io_func (GIOChannel              *source,
   /* Kill this head or disconnect the view */
   if (view == priv->views->data)
     g_object_unref (moz_headless);
-  else if (view->waiting_for_ack)
-    {
-      priv->waiting_for_ack --;
-      if (priv->waiting_for_ack == 0)
-        moz_headless_freeze_updates (MOZ_HEADLESS (moz_headless), FALSE);
-
-      disconnect_view (view);
-    }
+  else
+    disconnect_view (view);
 
   return FALSE;
 }
