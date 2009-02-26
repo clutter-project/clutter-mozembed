@@ -995,6 +995,10 @@ main (int argc, char **argv)
 {
   ClutterMozHeadless *moz_headless;
 
+#ifdef SUPPORT_PLUGINS
+  gtk_init (&argc, &argv);
+#endif
+
  if (argc != 4)
     {
       printf ("Usage: %s <output pipe> <input pipe> <shm name>\n", argv[0]);
