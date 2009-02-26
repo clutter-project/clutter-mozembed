@@ -7,7 +7,6 @@ AM_CPPFLAGS = \
 	$(MOZILLA_CFLAGS) \
 	-DMOZHOME=\"$(MOZHOME)\" \
 	-Wall
-
 AM_LDFLAGS = \
 	$(GOBJECT_LIBS) \
 	$(GTHREAD_LIBS) \

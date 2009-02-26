@@ -19,9 +19,6 @@
  */
 #include <config.h>
 
-#include <X11/extensions/Xcomposite.h>
-#include <clutter/x11/clutter-x11.h>
-#include <clutter/glx/clutter-glx.h>
 #include "clutter-mozembed.h"
 #include <glib/gstdio.h>
 #include <gio/gio.h>
@@ -33,7 +30,11 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+
 #ifdef SUPPORT_PLUGINS
+#include <X11/extensions/Xcomposite.h>
+#include <clutter/x11/clutter-x11.h>
+#include <clutter/glx/clutter-glx.h>
 #include <gdk/gdkx.h>
 #endif
 
@@ -125,12 +126,13 @@ struct _ClutterMozEmbedPrivate
 #endif
 };
 
+#ifdef SUPPORT_PLUGINS
 typedef struct _PluginWindow
 {
   gint          x, y;
   ClutterActor *plugin_tfp;
 } PluginWindow;
-
+#endif
 
 static gboolean
 separate_strings (gchar **strings, gint n_strings, gchar *string)
@@ -812,7 +814,7 @@ clutter_mozembed_allocate (ClutterActor          *actor,
       send_command (CLUTTER_MOZEMBED (actor), command);
       g_free (command);
     }
-
+  
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->
     allocate (actor, box, absolute_origin_changed);
 
