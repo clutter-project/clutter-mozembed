@@ -647,6 +647,14 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
           priv->new_shm_name = g_strdup (params[2]);
         }
     }
+#ifdef SUPPORT_PLUGINS
+  else if (g_str_equal (command, "plugin-window"))
+    {
+      Window viewport_window = (Window)strtoul (detail, NULL, 10);
+      moz_headless_set_plugin_window (MOZ_HEADLESS (moz_headless),
+                                      viewport_window);
+    }
+#endif
   else
     {
       g_warning ("Unrecognised command: %s", command);
@@ -986,19 +994,7 @@ int
 main (int argc, char **argv)
 {
   ClutterMozHeadless *moz_headless;
-#ifdef SUPPORT_PLUGINS
-  Window viewport_window;
-  
-  if (argc != 5)
-    {
-      printf ("Usage: %s <output pipe> <input pipe> <shm name> "
-              "<viewport_window>\n", argv[0]);
-      return 1;
-    }
-  viewport_window = (Window)strtoul (argv[4], NULL, 10);
 
-  gtk_init (&argc, &argv);
-#else
  if (argc != 4)
     {
       printf ("Usage: %s <output pipe> <input pipe> <shm name>\n", argv[0]);
@@ -1006,7 +1002,6 @@ main (int argc, char **argv)
     }
 
   g_type_init ();
-#endif
   
   /* Initialise mozilla */
   moz_headless_set_path (MOZHOME);
@@ -1016,11 +1011,6 @@ main (int argc, char **argv)
                                "input", argv[2],
                                "shm", argv[3],
                                NULL);
-#ifdef SUPPORT_PLUGINS
-  /* TODO: add a property to clutter-mozheadless for this... */
-  moz_headless_set_plugin_window (MOZ_HEADLESS (moz_headless),
-                                  viewport_window);
-#endif
 
   /* Begin */
   mainloop = g_main_loop_new (NULL, FALSE);
