@@ -592,97 +592,92 @@ plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
   return  CLUTTER_X11_FILTER_CONTINUE;
 }
 
-static gboolean
+static void
 clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
+  Display *xdpy;
+  Window stage_xwin;
+  ClutterStage *stage;
+  unsigned long pixel;
+  int composite_major, composite_minor;
+  gchar *command;
 
-  if (!priv->plugin_viewport)
-    {
-      Display *xdpy;
-      gchar *command;
-      Window stage_xwin;
-      ClutterStage *stage;
-      unsigned long white;
-      int composite_major, composite_minor;
+  g_return_if_fail (!priv->plugin_viewport);
 
-      xdpy = clutter_x11_get_default_display ();
-      if (!xdpy)
-        return FALSE;
-
-      stage = CLUTTER_STAGE (clutter_stage_get_default ());
-      stage_xwin = clutter_x11_get_stage_window (stage);
-      if (!stage_xwin)
-        return FALSE;
-
-      priv->toplevel_window = gdk_window_foreign_new (stage_xwin);
-      if (!priv->toplevel_window)
-        return FALSE;
-
-      /* NB: The plugin viewport will be repositioned within
-       * mozembed::allocate */
-      white = WhitePixel (xdpy, DefaultScreen (xdpy));
-      priv->plugin_viewport =
-        XCreateSimpleWindow (xdpy,
-                             GDK_WINDOW_XID (priv->toplevel_window),
-                             -100, -100,
-                             100, 100,
-                             0, /* border width */
-                             white, /* border color */
-                             white); /* bg color */
-
-      /* Note, unlike the individual plugin windows which we redirect using clutter,
-       * we redirect the viewport window directly since we want to be sure we never
-       * name a pixmap for it. NB: The viewport window is only needed for input
-       * clipping.
-       */
-      if (XCompositeQueryVersion (xdpy, &composite_major, &composite_minor)
-          != True)
-        {
-          g_critical ("The composite extension is required for redirecting "
-                      "plugin windows");
-        }
-
-      XCompositeRedirectWindow (xdpy,
-                                priv->plugin_viewport,
-                                CompositeRedirectManual);
-
-      XMapWindow (xdpy, priv->plugin_viewport);
-
-      /* We need to redirect the map requests of plugin windows so we have the
-       * oppertunity to redirect them offscreen first... */
-      XSelectInput (xdpy, priv->plugin_viewport,
-                    SubstructureNotifyMask);
-
-      clutter_x11_add_filter (plugin_viewport_x_event_filter,
-                              (gpointer)mozembed);
-
-      XMapWindow (xdpy, priv->plugin_viewport);
-      
-      command = g_strdup_printf ("plugin-window %lu",
-                                 (gulong)priv->plugin_viewport);
-      send_command (mozembed, command);
-      g_free (command);
-    }
-  
-  return TRUE;
-}
-
-static void
-clutter_mozembed_show (ClutterActor *actor)
-{
-  ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
-  ClutterMozEmbedPrivate *priv = mozembed->priv;
-  Display *xdpy = clutter_x11_get_default_display ();
-
-  CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->show (actor);
-
-  if (!clutter_mozembed_init_viewport (mozembed))
+  xdpy = clutter_x11_get_default_display ();
+  if (!xdpy)
     return;
 
-  /* Note we don't map/unmap the window since that would conflict with
-   * xcomposite and live previews of plugins windows for hidden tabs */
-  XMoveWindow (xdpy, priv->plugin_viewport, 0, 0);
+  stage = CLUTTER_STAGE (clutter_stage_get_default ());
+  stage_xwin = clutter_x11_get_stage_window (stage);
+  if (!stage_xwin)
+    return;
+
+  priv->toplevel_window = gdk_window_foreign_new (stage_xwin);
+  if (!priv->toplevel_window)
+    return;
+
+  /* XXX: If you uncomment the call to XCompositeRedirectWindow below this can
+   * simply help identify the viewport window for different tabs... */
+#if 0
+  {
+  static int color_toggle = 0;
+  if (color_toggle)
+    pixel = BlackPixel (xdpy, DefaultScreen (xdpy));
+  else
+    pixel = WhitePixel (xdpy, DefaultScreen (xdpy));
+  color_toggle = !color_toggle;
+  }
+#else
+  pixel = WhitePixel (xdpy, DefaultScreen (xdpy));
+#endif
+
+  /* NB: The plugin viewport will be repositioned within mozembed::allocate,
+   * so the 100x100 size chosen here is arbitrary */
+  priv->plugin_viewport =
+    XCreateSimpleWindow (xdpy,
+                         GDK_WINDOW_XID (priv->toplevel_window),
+                         -100, -100,
+                         100, 100,
+                         0, /* border width */
+                         pixel, /* border color */
+                         pixel); /* bg color */
+
+  /* Note, unlike the individual plugin windows which we redirect using clutter,
+   * we redirect the viewport window directly since we want to be sure we never
+   * name a pixmap for it. NB: The viewport window is only needed for input
+   * clipping.
+   */
+  if (XCompositeQueryVersion (xdpy, &composite_major, &composite_minor)
+      != True)
+    {
+      g_critical ("The composite extension is required for redirecting "
+                  "plugin windows");
+    }
+
+  XCompositeRedirectWindow (xdpy,
+                            priv->plugin_viewport,
+                            CompositeRedirectManual);
+
+  XMapWindow (xdpy, priv->plugin_viewport);
+
+  /* We need to redirect the map requests of plugin windows so we have the
+   * oppertunity to redirect them offscreen first... */
+  XSelectInput (xdpy, priv->plugin_viewport,
+                SubstructureNotifyMask);
+
+  clutter_x11_add_filter (plugin_viewport_x_event_filter,
+                          (gpointer)mozembed);
+
+  XMapWindow (xdpy, priv->plugin_viewport);
+  
+  command = g_strdup_printf ("plugin-window %lu",
+                             (gulong)priv->plugin_viewport);
+  send_command (mozembed, command);
+  g_free (command);
+  
+  return;
 }
 
 static void
@@ -694,13 +689,10 @@ clutter_mozembed_hide (ClutterActor *actor)
 
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->hide (actor);
 
-  if (!clutter_mozembed_init_viewport (mozembed))
-    return;
-
   /* Note we don't map/unmap the window since that would conflict with
    * xcomposite and live previews of plugins windows for hidden tabs */
   XMoveWindow (xdpy, priv->plugin_viewport,
-               -priv->plugin_viewport,
+               -priv->plugin_viewport_width,
                0);
 }
 #endif
@@ -921,6 +913,7 @@ clutter_mozembed_allocate (ClutterActor          *actor,
 #ifdef SUPPORT_PLUGINS
   Display *xdpy = clutter_x11_get_default_display ();
   gint abs_x, abs_y;
+  gboolean visible;
 #endif
 
   width = CLUTTER_UNITS_TO_INT (box->x2 - box->x1);
@@ -956,10 +949,13 @@ clutter_mozembed_allocate (ClutterActor          *actor,
     allocate (actor, box, absolute_origin_changed);
 
 #ifdef SUPPORT_PLUGINS
-  if (clutter_mozembed_init_viewport (mozembed))
+  clutter_actor_get_transformed_position (CLUTTER_ACTOR (actor),
+                                          &abs_x, &abs_y);
+  g_object_get (G_OBJECT (actor), "visible", &visible, NULL);
+  /* NB: We leave the X viewport window for hidden/un-reactive mozembed
+   * actors offscreen. */
+  if (visible)
     {
-      clutter_actor_get_transformed_position (CLUTTER_ACTOR (actor),
-                                              &abs_x, &abs_y);
       XMoveWindow (xdpy, priv->plugin_viewport, abs_x, abs_y);
 #warning "FIXME: plugin_viewport resizing needs to involve mozheadless"
       /* FIXME
@@ -969,10 +965,10 @@ clutter_mozembed_allocate (ClutterActor          *actor,
       if (width > 50 && height > 0)
         XResizeWindow (xdpy, priv->plugin_viewport, width-50, height);
         /* XResizeWindow (xdpy, priv->plugin_viewport, width-200, height-200); */
-      priv->plugin_viewport_width = width;
-      
-      clutter_mozembed_allocate_plugins (mozembed, absolute_origin_changed);
     }
+  priv->plugin_viewport_width = width;
+  
+  clutter_mozembed_allocate_plugins (mozembed, absolute_origin_changed);
 #endif
 }
 
@@ -1616,6 +1612,10 @@ clutter_mozembed_constructed (GObject *object)
     }
 
   clutter_mozembed_open_pipes (self);
+
+#ifdef SUPPORT_PLUGINS
+  clutter_mozembed_init_viewport (self);
+#endif
 }
 
 static void
@@ -1642,7 +1642,6 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
   actor_class->key_release_event    = clutter_mozembed_key_release_event;
   actor_class->scroll_event         = clutter_mozembed_scroll_event;
 #ifdef SUPPORT_PLUGINS
-  actor_class->show                 = clutter_mozembed_show;
   actor_class->hide                 = clutter_mozembed_hide;
 #endif
 
