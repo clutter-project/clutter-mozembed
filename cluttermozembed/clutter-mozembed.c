@@ -826,6 +826,8 @@ clutter_mozembed_dispose (GObject *object)
    */
   if (priv->plugin_viewport)
     {
+      clutter_x11_remove_filter (plugin_viewport_x_event_filter,
+                                 (gpointer)object);
       XDestroyWindow (xdpy, priv->plugin_viewport);
       priv->plugin_viewport = 0;
     }
