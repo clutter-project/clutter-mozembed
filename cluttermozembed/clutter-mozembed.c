@@ -132,6 +132,10 @@ typedef struct _PluginWindow
   gint          x, y;
   ClutterActor *plugin_tfp;
 } PluginWindow;
+
+static void
+clutter_mozembed_allocate_plugins (ClutterMozEmbed *mozembed,
+                                   gboolean         absolute_origin_changed);
 #endif
 
 static gboolean
@@ -483,10 +487,10 @@ block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
 static PluginWindow *
 find_plugin_window (GList *plugins, Window xwindow)
 {
-  GList *tmp;
-  for (tmp = plugins; tmp != NULL; tmp = tmp->next)
+  GList *pwin;
+  for (pwin = plugins; pwin != NULL; pwin = pwin->next)
     {
-      PluginWindow *plugin_window = tmp->data;
+      PluginWindow *plugin_window = pwin->data;
       Window        plugin_xwindow;
 
       g_object_get (G_OBJECT (plugin_window->plugin_tfp),
@@ -580,7 +584,8 @@ plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
 
       plugin_window->x = xev->xconfigure.x;
       plugin_window->y = xev->xconfigure.y;
-      clutter_actor_queue_relayout (CLUTTER_ACTOR (mozembed));
+
+      clutter_mozembed_allocate_plugins (mozembed, FALSE);
       break;
     }
 
@@ -775,7 +780,7 @@ clutter_mozembed_dispose (GObject *object)
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
 #ifdef SUPPORT_PLUGINS
   Display                *xdpy = clutter_x11_get_default_display ();
-  GList                  *tmp;
+  GList                  *pwin;
 #endif
   
   if (priv->monitor)
@@ -832,9 +837,9 @@ clutter_mozembed_dispose (GObject *object)
       priv->plugin_viewport = 0;
     }
 
-  for (tmp = priv->plugin_windows; tmp != NULL; tmp = tmp->next)
+  for (pwin = priv->plugin_windows; pwin != NULL; pwin = pwin->next)
     {
-      PluginWindow *plugin_window = tmp->data;
+      PluginWindow *plugin_window = pwin->data;
       clutter_actor_unparent (plugin_window->plugin_tfp);
       g_slice_free (PluginWindow, plugin_window);
     }
@@ -864,6 +869,46 @@ clutter_mozembed_finalize (GObject *object)
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->finalize (object);
 }
 
+#ifdef SUPPORT_PLUGINS
+static void
+clutter_mozembed_allocate_plugins (ClutterMozEmbed *mozembed,
+                                   gboolean         absolute_origin_changed)
+{
+  GList *pwin;
+
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  for (pwin = priv->plugin_windows; pwin != NULL; pwin = pwin->next)
+    {
+      PluginWindow   *plugin_window = pwin->data;
+      ClutterActor   *plugin_tfp = CLUTTER_ACTOR (plugin_window->plugin_tfp);
+      ClutterUnit     natural_width, natural_height;
+      ClutterActorBox child_box;
+
+      /* Note, the texture-from-pixmap actor is considered authorative over
+       * its width and height as opposed to us tracking the width and height
+       * of the actor according to configure notify events of the corresponding
+       * plugin window.
+       *
+       * If the tfp actor hasn't yet renamed the pixmap for the redirected
+       * window since it was last resized, then I guess it will look better if
+       * we avoid scaling whatever pixmap we currently have. */
+      clutter_actor_get_preferred_size (plugin_tfp,
+                                        NULL, NULL,
+                                        &natural_width, &natural_height);
+
+      child_box.x1 = plugin_window->x;
+      child_box.y1 = plugin_window->y;
+      child_box.x2 = plugin_window->x + natural_width;
+      child_box.y2 = plugin_window->y + natural_height;
+
+      clutter_actor_allocate (plugin_window->plugin_tfp,
+                              &child_box,
+                              absolute_origin_changed);
+    }
+}
+#endif
+
 static void
 clutter_mozembed_allocate (ClutterActor          *actor,
                            const ClutterActorBox *box,
@@ -874,7 +919,6 @@ clutter_mozembed_allocate (ClutterActor          *actor,
   ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 #ifdef SUPPORT_PLUGINS
-  GList *tmp;
   Display *xdpy = clutter_x11_get_default_display ();
   gint abs_x, abs_y;
 #endif
@@ -926,35 +970,8 @@ clutter_mozembed_allocate (ClutterActor          *actor,
         XResizeWindow (xdpy, priv->plugin_viewport, width-50, height);
         /* XResizeWindow (xdpy, priv->plugin_viewport, width-200, height-200); */
       priv->plugin_viewport_width = width;
-
-      for (tmp = priv->plugin_windows; tmp != NULL; tmp = tmp->next)
-        {
-          PluginWindow   *plugin_window = tmp->data;
-          ClutterActor   *plugin_tfp = CLUTTER_ACTOR (plugin_window->plugin_tfp);
-          ClutterUnit     natural_width, natural_height;
-          ClutterActorBox child_box;
-
-          /* Note, the texture-from-pixmap actor is considered authorative over
-           * its width and height as opposed to us tracking the width and height
-           * of the actor according to configure notify events of the corresponding
-           * plugin window.
-           *
-           * If the tfp actor hasn't yet renamed the pixmap for the redirected
-           * window since it was last resized, then I guess it will look better if
-           * we avoid scaling whatever pixmap we currently have. */
-          clutter_actor_get_preferred_size (plugin_tfp,
-                                            NULL, NULL,
-                                            &natural_width, &natural_height);
-
-          child_box.x1 = plugin_window->x;
-          child_box.y1 = plugin_window->y;
-          child_box.x2 = plugin_window->x + natural_width;
-          child_box.y2 = plugin_window->y + natural_height;
-
-          clutter_actor_allocate (plugin_window->plugin_tfp,
-                                  &child_box,
-                                  absolute_origin_changed);
-        }
+      
+      clutter_mozembed_allocate_plugins (mozembed, absolute_origin_changed);
     }
 #endif
 }
@@ -966,7 +983,7 @@ clutter_mozembed_paint (ClutterActor *actor)
   ClutterMozEmbedPrivate *priv = self->priv;
 #ifdef SUPPORT_PLUGINS
   ClutterGeometry geom;
-  GList *tmp;
+  GList *pwin;
 #endif
 
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->paint (actor);
@@ -974,9 +991,9 @@ clutter_mozembed_paint (ClutterActor *actor)
 #ifdef SUPPORT_PLUGINS
   clutter_actor_get_allocation_geometry (actor, &geom);
   cogl_clip_push (geom.x, geom.y, geom.width, geom.height);
-  for (tmp = priv->plugin_windows; tmp != NULL; tmp = tmp->next)
+  for (pwin = priv->plugin_windows; pwin != NULL; pwin = pwin->next)
     {
-      PluginWindow *plugin_window = tmp->data;
+      PluginWindow *plugin_window = pwin->data;
       ClutterActor *plugin_tfp = CLUTTER_ACTOR (plugin_window->plugin_tfp);
 
       if (CLUTTER_ACTOR_IS_VISIBLE (plugin_tfp))
