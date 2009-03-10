@@ -593,6 +593,31 @@ plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
 }
 
 static void
+clutter_mozembed_disable_plugin_input (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  Display *xdpy = clutter_x11_get_default_display ();
+
+  /* Note we don't map/unmap the window since that would conflict with
+   * xcomposite and live previews of plugins windows for hidden tabs */
+  XMoveWindow (xdpy, priv->plugin_viewport,
+               -priv->plugin_viewport_width,
+               0);
+}
+
+static void
+reactive_change_cb (GObject    *object,
+                    GParamSpec *param_spec,
+                    gpointer    data)
+{
+  gboolean reactive =
+    clutter_actor_get_reactive (CLUTTER_ACTOR (object));
+
+  if (!reactive)
+    clutter_mozembed_disable_plugin_input (CLUTTER_MOZEMBED (object));
+}
+
+static void
 clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
@@ -660,10 +685,6 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
                             priv->plugin_viewport,
                             CompositeRedirectManual);
 
-  XMapWindow (xdpy, priv->plugin_viewport);
-
-  /* We need to redirect the map requests of plugin windows so we have the
-   * oppertunity to redirect them offscreen first... */
   XSelectInput (xdpy, priv->plugin_viewport,
                 SubstructureNotifyMask);
 
@@ -671,6 +692,14 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
                           (gpointer)mozembed);
 
   XMapWindow (xdpy, priv->plugin_viewport);
+
+  /* actor::allocate will enable input when appropriate */
+  clutter_mozembed_disable_plugin_input (mozembed);
+
+  g_signal_connect (G_OBJECT (mozembed),
+                    "notify::reactive",
+                    G_CALLBACK (reactive_change_cb),
+                    NULL);
   
   command = g_strdup_printf ("plugin-window %lu",
                              (gulong)priv->plugin_viewport);
@@ -683,17 +712,9 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 static void
 clutter_mozembed_hide (ClutterActor *actor)
 {
-  ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
-  ClutterMozEmbedPrivate *priv = mozembed->priv;
-  Display *xdpy = clutter_x11_get_default_display ();
-
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->hide (actor);
 
-  /* Note we don't map/unmap the window since that would conflict with
-   * xcomposite and live previews of plugins windows for hidden tabs */
-  XMoveWindow (xdpy, priv->plugin_viewport,
-               -priv->plugin_viewport_width,
-               0);
+  clutter_mozembed_disable_plugin_input (CLUTTER_MOZEMBED (actor));
 }
 #endif
 
@@ -914,6 +935,7 @@ clutter_mozembed_allocate (ClutterActor          *actor,
   Display *xdpy = clutter_x11_get_default_display ();
   gint abs_x, abs_y;
   gboolean visible;
+  gboolean reactive;
 #endif
 
   width = CLUTTER_UNITS_TO_INT (box->x2 - box->x1);
@@ -951,10 +973,13 @@ clutter_mozembed_allocate (ClutterActor          *actor,
 #ifdef SUPPORT_PLUGINS
   clutter_actor_get_transformed_position (CLUTTER_ACTOR (actor),
                                           &abs_x, &abs_y);
+
   g_object_get (G_OBJECT (actor), "visible", &visible, NULL);
+  g_object_get (G_OBJECT (actor), "reactive", &reactive, NULL);
+
   /* NB: We leave the X viewport window for hidden/un-reactive mozembed
    * actors offscreen. */
-  if (visible)
+  if (visible && reactive)
     {
       XMoveWindow (xdpy, priv->plugin_viewport, abs_x, abs_y);
 #warning "FIXME: plugin_viewport resizing needs to involve mozheadless"
