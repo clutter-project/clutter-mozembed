@@ -135,6 +135,9 @@ typedef struct _PluginWindow
 static void
 clutter_mozembed_allocate_plugins (ClutterMozEmbed *mozembed,
                                    gboolean         absolute_origin_changed);
+
+static int trapped_x_error = 0;
+static int (*prev_error_handler) (Display *, XErrorEvent *);
 #endif
 
 static gboolean
@@ -485,6 +488,28 @@ block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
 }
 
 #ifdef SUPPORT_PLUGINS
+static int
+error_handler (Display     *xdpy,
+	       XErrorEvent *error)
+{
+  trapped_x_error = error->error_code;
+  return 0;
+}
+
+void
+clutter_mozembed_trap_x_errors (void)
+{
+  trapped_x_error = 0;
+  prev_error_handler = XSetErrorHandler (error_handler);
+}
+
+int
+clutter_mozembed_untrap_x_errors (void)
+{
+  XSetErrorHandler (prev_error_handler);
+  return trapped_x_error;
+}
+
 static PluginWindow *
 find_plugin_window (GList *plugins, Window xwindow)
 {
@@ -567,27 +592,31 @@ plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
   Window                  root_win;
   Window                 *children;
   unsigned int            n_children;
+  Status                  status;
 
   switch (xev->type)
     {
     case MapNotify:
 
-      if (XQueryTree (xdpy,
+      clutter_mozembed_trap_x_errors ();
+      status = XQueryTree (xdpy,
                       xev->xmap.window,
                       &root_win,
                       &parent_win,
                       &children,
-                      &n_children) == 0)
-        {
-          break;
-        }
+                      &n_children);
+      clutter_mozembed_untrap_x_errors ();
+      if (status == 0)
+        break;
       XFree (children);
 
       if (parent_win != priv->plugin_viewport)
         break;
 
-      if (XGetWindowAttributes (xdpy, xev->xmap.window, &attribs)
-          == 0)
+      clutter_mozembed_trap_x_errors ();
+      status = XGetWindowAttributes (xdpy, xev->xmap.window, &attribs);
+      clutter_mozembed_untrap_x_errors ();
+      if (status == 0)
         break;
 
       plugin_window = g_slice_new (PluginWindow);
@@ -824,9 +853,82 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
 static void
 clutter_mozembed_dispose (GObject *object)
 {
-  ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (object);
-  ClutterMozEmbedPrivate *priv = mozembed->priv;
-  
+  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
+#ifdef SUPPORT_PLUGINS
+  Display                *xdpy = clutter_x11_get_default_display ();
+
+  /* Note: we aren't using a saveset so this means any plugin
+   * windows currently mapped here are coming down with us too!
+   */
+  if (priv->plugin_viewport)
+    {
+      Window             root_win;
+      Window             parent_win;
+      Window            *children;
+      unsigned int       n_children;
+      XWindowAttributes  attribs;
+      Status             status;
+
+      clutter_x11_remove_filter (plugin_viewport_x_event_filter,
+                                 (gpointer)object);
+
+      clutter_mozembed_trap_x_errors ();
+      status  = XQueryTree (xdpy,
+                            priv->plugin_viewport,
+                            &root_win,
+                            &parent_win,
+                            &children,
+                            &n_children);
+      clutter_mozembed_untrap_x_errors ();
+      if (status != 0)
+        {
+          ClutterStage *stage = CLUTTER_STAGE (clutter_stage_get_default ());
+          Window        stage_xwin = clutter_x11_get_stage_window (stage);
+          int           i;
+
+          /* To potentially support re-attaching to a mozheadless backend with
+           * plugin windows we could ask the mozheadless backend for a
+           * temporary parent for the plugins instead of using the stage. */
+          for (i = 0; i < n_children; i++)
+            {
+              int width = 1000;
+              int height = 1000;
+
+              clutter_mozembed_trap_x_errors ();
+
+              if (XGetWindowAttributes (xdpy, children[i], &attribs) != 0)
+                {
+                  width = attribs.width;
+                  height = attribs.height;
+                }
+
+              /* Make sure to position the plugin window offscreen so it doesn't
+               * interfere with input. */
+              /* XXX: There is the potential for the plugin window to be
+               * resized and become visible within the stage. */
+              XReparentWindow (xdpy, children[i], stage_xwin, -width, -height);
+
+              XSync (xdpy, False);
+              clutter_mozembed_untrap_x_errors ();
+            }
+
+          XFree (children);
+        }
+
+      XDestroyWindow (xdpy, priv->plugin_viewport);
+      priv->plugin_viewport = 0;
+    }
+
+  while (priv->plugin_windows)
+    {
+      PluginWindow *plugin_window = priv->plugin_windows->data;
+      clutter_actor_unparent (plugin_window->plugin_tfp);
+      g_slice_free (PluginWindow, plugin_window);
+      priv->plugin_windows = g_list_delete_link (priv->plugin_windows,
+                                                 priv->plugin_windows);
+    }
+#endif
+
   if (priv->monitor)
     {
       g_file_monitor_cancel (priv->monitor);
@@ -872,30 +974,6 @@ clutter_mozembed_dispose (GObject *object)
       g_io_channel_unref (priv->output);
       priv->output = NULL;
     }
-
-#ifdef SUPPORT_PLUGINS
-  /* Note: we aren't using a saveset so this means any plugin
-   * windows currently mapped here are coming down with us too!
-   */
-  if (priv->plugin_viewport)
-    {
-      Display *xdpy = clutter_x11_get_default_display ();
-
-      clutter_x11_remove_filter (plugin_viewport_x_event_filter,
-                                 (gpointer)object);
-      XDestroyWindow (xdpy, priv->plugin_viewport);
-      priv->plugin_viewport = 0;
-    }
-
-  while (priv->plugin_windows)
-    {
-      PluginWindow *plugin_window = priv->plugin_windows->data;
-      clutter_actor_unparent (plugin_window->plugin_tfp);
-      g_slice_free (PluginWindow, plugin_window);
-      priv->plugin_windows = g_list_delete_link (priv->plugin_windows,
-                                                 priv->plugin_windows);
-    }
-#endif
 
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->dispose (object);
 }
