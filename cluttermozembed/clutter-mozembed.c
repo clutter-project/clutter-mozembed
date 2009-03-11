@@ -391,7 +391,9 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
     }
   else if (g_str_equal (command, "closed"))
     {
-      g_signal_emit (self, signals[CLOSED], 0);
+      /* If we're in dispose, watch_id will be zero */
+      if (priv->watch_id)
+        g_signal_emit (self, signals[CLOSED], 0);
     }
   else if (g_str_equal (command, "shm-name"))
     {
@@ -790,11 +792,8 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
 static void
 clutter_mozembed_dispose (GObject *object)
 {
-  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
-#ifdef SUPPORT_PLUGINS
-  Display                *xdpy = clutter_x11_get_default_display ();
-  GList                  *pwin;
-#endif
+  ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (object);
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
   
   if (priv->monitor)
     {
@@ -802,8 +801,13 @@ clutter_mozembed_dispose (GObject *object)
       g_object_unref (priv->monitor);
       priv->monitor = NULL;
     }
-  
+
   if (priv->watch_id) {
+    /* FIXME: Following is a temporary fix */
+    /* Wait until the backend has shut down */
+    send_command (mozembed, "quit");
+    block_until_feedback (mozembed, "closed");
+
     g_source_remove (priv->watch_id);
     priv->watch_id = 0;
   }
@@ -844,19 +848,22 @@ clutter_mozembed_dispose (GObject *object)
    */
   if (priv->plugin_viewport)
     {
+      Display *xdpy = clutter_x11_get_default_display ();
+
       clutter_x11_remove_filter (plugin_viewport_x_event_filter,
                                  (gpointer)object);
       XDestroyWindow (xdpy, priv->plugin_viewport);
       priv->plugin_viewport = 0;
     }
 
-  for (pwin = priv->plugin_windows; pwin != NULL; pwin = pwin->next)
+  while (priv->plugin_windows)
     {
-      PluginWindow *plugin_window = pwin->data;
+      PluginWindow *plugin_window = priv->plugin_windows->data;
       clutter_actor_unparent (plugin_window->plugin_tfp);
       g_slice_free (PluginWindow, plugin_window);
+      priv->plugin_windows = g_list_delete_link (priv->plugin_windows,
+                                                 priv->plugin_windows);
     }
-  g_list_free (priv->plugin_windows);
 #endif
 
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->dispose (object);

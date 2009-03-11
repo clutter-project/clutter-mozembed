@@ -611,6 +611,7 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
     }
   else if (g_str_equal (command, "quit"))
     {
+      send_feedback_all (moz_headless, "closed");
       g_object_unref (moz_headless);
     }
   else if (g_str_equal (command, "new-view"))
