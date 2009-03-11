@@ -122,7 +122,6 @@ struct _ClutterMozEmbedPrivate
   Window           plugin_viewport;
 
   GList           *plugin_windows;
-  guint            plugin_viewport_width;
 #endif
 };
 
@@ -506,6 +505,56 @@ find_plugin_window (GList *plugins, Window xwindow)
   return NULL;
 }
 
+static void
+clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  Display                *xdpy = clutter_x11_get_default_display ();
+  ClutterGeometry         geom;
+  gint                    abs_x, abs_y;
+  gboolean                visible;
+  gboolean                reactive;
+
+  if (!priv->plugin_viewport)
+    return;
+
+  g_object_get (G_OBJECT (mozembed), "visible", &visible, NULL);
+  g_object_get (G_OBJECT (mozembed), "reactive", &reactive, NULL);
+
+  clutter_actor_get_allocation_geometry (CLUTTER_ACTOR (mozembed), &geom);
+
+  if (visible && reactive)
+    {
+      clutter_actor_get_transformed_position (CLUTTER_ACTOR (mozembed),
+                                              &abs_x, &abs_y);
+
+      XMoveWindow (xdpy, priv->plugin_viewport, abs_x, abs_y);
+
+#warning "FIXME: plugin_viewport resizing needs to involve mozheadless"
+      /* FIXME
+       * Only mozheadless knows about scrollbars which affect the real
+       * viewport size. For now we assume no horizontal scrollbar, and a
+       * 50px vertical bar. */
+      if (geom.width > 50 && geom.height > 0)
+        {
+#if 1
+          XResizeWindow (xdpy, priv->plugin_viewport,
+                         geom.width - 50, geom.height);
+#else /* XXX: Handy when disabling redirection of the viewport
+         for debugging... */
+          XResizeWindow (xdpy, priv->plugin_viewport,
+                         geom.width - 200, geom.height - 200);
+#endif
+        }
+    }
+  else
+    {
+      /* Note we don't map/unmap the window since that would conflict with
+       * xcomposite and live previews of plugins windows for hidden tabs */
+      XMoveWindow (xdpy, priv->plugin_viewport, -geom.width, 0);
+    }
+}
+
 static ClutterX11FilterReturn
 plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
 {
@@ -586,7 +635,8 @@ plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
 
       plugin_window->x = xev->xconfigure.x;
       plugin_window->y = xev->xconfigure.y;
-
+      
+      clutter_mozembed_sync_plugin_viewport_pos (mozembed);
       clutter_mozembed_allocate_plugins (mozembed, FALSE);
       break;
     }
@@ -595,28 +645,11 @@ plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
 }
 
 static void
-clutter_mozembed_disable_plugin_input (ClutterMozEmbed *mozembed)
-{
-  ClutterMozEmbedPrivate *priv = mozembed->priv;
-  Display *xdpy = clutter_x11_get_default_display ();
-
-  /* Note we don't map/unmap the window since that would conflict with
-   * xcomposite and live previews of plugins windows for hidden tabs */
-  XMoveWindow (xdpy, priv->plugin_viewport,
-               -priv->plugin_viewport_width,
-               0);
-}
-
-static void
 reactive_change_cb (GObject    *object,
                     GParamSpec *param_spec,
                     gpointer    data)
 {
-  gboolean reactive =
-    clutter_actor_get_reactive (CLUTTER_ACTOR (object));
-
-  if (!reactive)
-    clutter_mozembed_disable_plugin_input (CLUTTER_MOZEMBED (object));
+  clutter_mozembed_sync_plugin_viewport_pos (CLUTTER_MOZEMBED (object));
 }
 
 static void
@@ -647,7 +680,7 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 
   /* XXX: If you uncomment the call to XCompositeRedirectWindow below this can
    * simply help identify the viewport window for different tabs... */
-#if 0
+#if 1
   {
   static int color_toggle = 0;
   if (color_toggle)
@@ -682,11 +715,11 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
       g_critical ("The composite extension is required for redirecting "
                   "plugin windows");
     }
-
+#if 1
   XCompositeRedirectWindow (xdpy,
                             priv->plugin_viewport,
                             CompositeRedirectManual);
-
+#endif
   XSelectInput (xdpy, priv->plugin_viewport,
                 SubstructureNotifyMask);
 
@@ -695,8 +728,7 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 
   XMapWindow (xdpy, priv->plugin_viewport);
 
-  /* actor::allocate will enable input when appropriate */
-  clutter_mozembed_disable_plugin_input (mozembed);
+  clutter_mozembed_sync_plugin_viewport_pos (mozembed);
 
   g_signal_connect (G_OBJECT (mozembed),
                     "notify::reactive",
@@ -716,7 +748,7 @@ clutter_mozembed_hide (ClutterActor *actor)
 {
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->hide (actor);
 
-  clutter_mozembed_disable_plugin_input (CLUTTER_MOZEMBED (actor));
+  clutter_mozembed_sync_plugin_viewport_pos (CLUTTER_MOZEMBED (actor));
 }
 #endif
 
@@ -938,12 +970,6 @@ clutter_mozembed_allocate (ClutterActor          *actor,
   gint width, height, tex_width, tex_height;
   ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = mozembed->priv;
-#ifdef SUPPORT_PLUGINS
-  Display *xdpy = clutter_x11_get_default_display ();
-  gint abs_x, abs_y;
-  gboolean visible;
-  gboolean reactive;
-#endif
 
   width = CLUTTER_UNITS_TO_INT (box->x2 - box->x1);
   height = CLUTTER_UNITS_TO_INT (box->y2 - box->y1);
@@ -978,27 +1004,7 @@ clutter_mozembed_allocate (ClutterActor          *actor,
     allocate (actor, box, absolute_origin_changed);
 
 #ifdef SUPPORT_PLUGINS
-  clutter_actor_get_transformed_position (CLUTTER_ACTOR (actor),
-                                          &abs_x, &abs_y);
-
-  g_object_get (G_OBJECT (actor), "visible", &visible, NULL);
-  g_object_get (G_OBJECT (actor), "reactive", &reactive, NULL);
-
-  /* NB: We leave the X viewport window for hidden/un-reactive mozembed
-   * actors offscreen. */
-  if (visible && reactive)
-    {
-      XMoveWindow (xdpy, priv->plugin_viewport, abs_x, abs_y);
-#warning "FIXME: plugin_viewport resizing needs to involve mozheadless"
-      /* FIXME
-       * Only mozheadless knows about scrollbars which affect the real
-       * viewport size. For now we assume no horizontal scrollbar, and a
-       * 50px vertical bar. */
-      if (width > 50 && height > 0)
-        XResizeWindow (xdpy, priv->plugin_viewport, width-50, height);
-        /* XResizeWindow (xdpy, priv->plugin_viewport, width-200, height-200); */
-    }
-  priv->plugin_viewport_width = width;
+  clutter_mozembed_sync_plugin_viewport_pos (mozembed);
   
   clutter_mozembed_allocate_plugins (mozembed, absolute_origin_changed);
 #endif
