@@ -975,6 +975,12 @@ clutter_mozembed_dispose (GObject *object)
       priv->output = NULL;
     }
 
+  if (priv->motion_throttle)
+    {
+      g_source_remove (priv->motion_throttle);
+      priv->motion_throttle = 0;
+    }
+
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->dispose (object);
 }
 
