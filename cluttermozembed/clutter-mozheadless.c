@@ -107,6 +107,7 @@ static void
 send_feedback (ClutterMozHeadlessView *view,
                const gchar            *feedback)
 {
+  /*g_debug ("Sending feedback '%s' to view %p", feedback, view);*/
   g_io_channel_write_chars (view->output, feedback,
                             strlen (feedback) + 1, NULL, NULL);
   g_io_channel_flush (view->output, NULL);
@@ -430,6 +431,8 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
   ClutterMozHeadless *moz_headless = view->parent;
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
   MozHeadless *headless = MOZ_HEADLESS (moz_headless);
+  
+  /*g_debug ("Processing command: %s", command);*/
   
   /* TODO: Of course, we should make this a binary format - it's this way 
    *       to ease debugging.

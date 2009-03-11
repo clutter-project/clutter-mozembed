@@ -1616,6 +1616,8 @@ clutter_mozembed_open_pipes (ClutterMozEmbed *self)
 {
   gint fd;
   GFile *file;
+  
+  GError *error = NULL;
   ClutterMozEmbedPrivate *priv = self->priv;
 
   /* FIXME: This needs a time-out, or we can block here indefinitely if the
@@ -1624,7 +1626,12 @@ clutter_mozembed_open_pipes (ClutterMozEmbed *self)
 
   /* Wait for headless process to create the output pipe */
   file = g_file_new_for_path (priv->output_file);
-  priv->monitor = g_file_monitor_file (file, 0, NULL, NULL);
+  priv->monitor = g_file_monitor_file (file, 0, NULL, &error);
+  if (!priv->monitor)
+    {
+      g_warning ("Error creating file monitor: %s", error->message);
+      g_error_free (error);
+    }
   g_object_unref (file);
   g_signal_connect (priv->monitor, "changed",
                     G_CALLBACK (file_changed_cb), self);
