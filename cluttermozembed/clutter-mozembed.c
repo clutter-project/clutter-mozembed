@@ -1962,77 +1962,30 @@ clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
   return CLUTTER_ACTOR (mozembed);
 }
 
-GList *
-clutter_mozembed_get_live_previews ()
+ClutterActor *
+clutter_mozembed_new_view (void)
 {
-  GDir *dir;
-  const gchar *filename;
+  ClutterMozEmbed *mozembed;
 
-  GList *views = NULL;
-  GError *error = NULL;
+ /* Create a read-only mozembed */
+  mozembed = g_object_new (CLUTTER_TYPE_MOZEMBED,
+                           "read-only", TRUE,
+                           "spawn", FALSE,
+                           NULL);
 
-  /* FIXME: This is very hacky, really we want to advertise the open tabs
-   * over dbus or something like that...
-   */
-  dir = g_dir_open (g_get_tmp_dir (), 0, &error);
-  
-  if (!dir)
-    {
-      g_warning ("Error opening temporary files directory: %s", error->message);
-      g_error_free (error);
-      return NULL;
-    }
+  return CLUTTER_ACTOR (mozembed);
+}
 
-  while ((filename = g_dir_read_name (dir)))
-    {
-      gint fd;
-      ClutterActor *mozembed;
-      gchar *full_file, *input, *output, *command;
+void
+clutter_mozembed_connect_view (ClutterMozEmbed *mozembed,
+                               const gchar     *input,
+                               const gchar     *output)
+{
+  gchar *command;
 
-      if (!strstr (filename, "clutter-mozheadless-"))
-        continue;
-      
-      full_file = g_build_filename (g_get_tmp_dir (), filename, NULL);
-
-      /* Just a note, we won't use this method for long hopefully, but
-       * I've *no* idea what happens when two processes are writing on the
-       * same pipe in terms of the possibility of interleaved messages...
-       */
-      
-      /* Open the pipe and ask it to create a new view */
-      fd = open (full_file, O_WRONLY | O_NDELAY);
-      
-      if (fd)
-        {
-          /* Create a read-only mozembed */
-          mozembed = g_object_new (CLUTTER_TYPE_MOZEMBED,
-                                   "read-only", TRUE,
-                                   "spawn", FALSE,
-                                   NULL);
-
-          /* Get the pipe names */
-          g_object_get (G_OBJECT (mozembed),
-                        "input", &input,
-                        "output", &output,
-                        NULL);
-
-          command = g_strdup_printf ("new-view %s %s", input, output);
-          write (fd, command, strlen (command) + 1);
-          g_free (command);
-
-          close (fd);
-          g_free (input);
-          g_free (output);
-
-          views = g_list_append (views, mozembed);
-        }
-
-      g_free (full_file);
-    }
-  
-  g_dir_close (dir);
-  
-  return views;
+  command = g_strdup_printf ("new-view %s %s", input, output);
+  send_command (mozembed, command);
+  g_free (command);
 }
 
 void

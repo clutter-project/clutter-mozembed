@@ -72,8 +72,11 @@ GType clutter_mozembed_get_type (void);
 
 ClutterActor *clutter_mozembed_new (void);
 ClutterActor *clutter_mozembed_new_with_parent (ClutterMozEmbed *parent);
+ClutterActor *clutter_mozembed_new_view (void);
 
-GList *clutter_mozembed_get_live_previews ();
+void clutter_mozembed_connect_view (ClutterMozEmbed *mozembed,
+                                    const gchar     *input,
+                                    const gchar     *output);
 
 void clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri);
 const gchar *clutter_mozembed_get_location (ClutterMozEmbed *mozembed);

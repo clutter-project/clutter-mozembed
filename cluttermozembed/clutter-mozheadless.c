@@ -780,7 +780,7 @@ input_io_func (GIOChannel              *source,
   }
   
   /* Kill this head or disconnect the view */
-  if (view == priv->views->data)
+  if ((priv->views) && (view == priv->views->data))
     g_object_unref (moz_headless);
   else
     disconnect_view (view);
