@@ -1045,6 +1045,60 @@ clutter_mozembed_allocate_plugins (ClutterMozEmbed *mozembed,
 #endif
 
 static void
+clutter_mozembed_get_preferred_width (ClutterActor *actor,
+                                      ClutterUnit   for_height,
+                                      ClutterUnit  *min_width_p,
+                                      ClutterUnit  *natural_width_p)
+{
+  ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  if (priv->read_only)
+    {
+      gint width;
+
+      if (min_width_p)
+        *min_width_p = 0;
+
+      clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
+                                     &width, NULL);
+
+      if (natural_width_p)
+        *natural_width_p = CLUTTER_UNITS_FROM_INT (width);
+    }
+  else
+    CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->
+      get_preferred_width (actor, for_height, min_width_p, natural_width_p);
+}
+
+static void
+clutter_mozembed_get_preferred_height (ClutterActor *actor,
+                                      ClutterUnit    for_width,
+                                      ClutterUnit   *min_height_p,
+                                      ClutterUnit   *natural_height_p)
+{
+  ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  if (priv->read_only)
+    {
+      gint height;
+
+      if (min_height_p)
+        *min_height_p = 0;
+
+      clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
+                                     NULL, &height);
+
+      if (natural_height_p)
+        *natural_height_p = CLUTTER_UNITS_FROM_INT (height);
+    }
+  else
+    CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->
+      get_preferred_height (actor, for_width, min_height_p, natural_height_p);
+}
+
+static void
 clutter_mozembed_allocate (ClutterActor          *actor,
                            const ClutterActorBox *box,
                            gboolean               absolute_origin_changed)
@@ -1747,10 +1801,20 @@ clutter_mozembed_constructed (GObject *object)
 }
 
 static void
+clutter_mozembed_size_change (ClutterTexture *texture, gint width, gint height)
+{
+  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (texture)->priv;
+  
+  if (priv->read_only)
+    clutter_actor_queue_relayout (CLUTTER_ACTOR (texture));
+}
+
+static void
 clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
 {
   GObjectClass      *object_class = G_OBJECT_CLASS (klass);
   ClutterActorClass *actor_class = CLUTTER_ACTOR_CLASS (klass);
+  ClutterTextureClass *texture_class = CLUTTER_TEXTURE_CLASS (klass);
 
   g_type_class_add_private (klass, sizeof (ClutterMozEmbedPrivate));
 
@@ -1761,6 +1825,8 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
   object_class->constructed = clutter_mozembed_constructed;
   
   actor_class->allocate             = clutter_mozembed_allocate;
+  actor_class->get_preferred_width  = clutter_mozembed_get_preferred_width;
+  actor_class->get_preferred_height = clutter_mozembed_get_preferred_height;
   actor_class->paint                = clutter_mozembed_paint;
   actor_class->pick                 = clutter_mozembed_pick;
   actor_class->motion_event         = clutter_mozembed_motion_event;
@@ -1772,6 +1838,8 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
 #ifdef SUPPORT_PLUGINS
   actor_class->hide                 = clutter_mozembed_hide;
 #endif
+
+  texture_class->size_change        = clutter_mozembed_size_change;
 
   g_object_class_install_property (object_class,
                                    PROP_LOCATION,
