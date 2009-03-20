@@ -693,6 +693,7 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
   gchar *command;
 
   g_return_if_fail (!priv->plugin_viewport);
+  g_return_if_fail (!priv->read_only);
 
   xdpy = clutter_x11_get_default_display ();
   if (!xdpy)

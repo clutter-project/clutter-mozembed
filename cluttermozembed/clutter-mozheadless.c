@@ -758,6 +758,7 @@ input_io_func (GIOChannel              *source,
       } else if (status == G_IO_STATUS_ERROR) {
         g_warning ("Error reading from source: %s", error->message);
         g_error_free (error);
+        break;
       } else if (status == G_IO_STATUS_EOF)
         break;
       return TRUE;
