@@ -1055,16 +1055,21 @@ clutter_mozembed_get_preferred_width (ClutterActor *actor,
 
   if (priv->read_only)
     {
-      gint width;
+      gint width, height;
 
       if (min_width_p)
         *min_width_p = 0;
 
       clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
-                                     &width, NULL);
+                                     &width, &height);
 
       if (natural_width_p)
-        *natural_width_p = CLUTTER_UNITS_FROM_INT (width);
+        {
+          if (for_height > 0)
+            *natural_width_p = width / (gfloat)height * for_height;
+          else
+            *natural_width_p = CLUTTER_UNITS_FROM_INT (width);
+        }
     }
   else
     CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->
@@ -1082,16 +1087,21 @@ clutter_mozembed_get_preferred_height (ClutterActor *actor,
 
   if (priv->read_only)
     {
-      gint height;
+      gint width, height;
 
       if (min_height_p)
         *min_height_p = 0;
 
       clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
-                                     NULL, &height);
+                                     &width, &height);
 
       if (natural_height_p)
-        *natural_height_p = CLUTTER_UNITS_FROM_INT (height);
+        {
+          if (for_width > 0)
+            *natural_height_p = height / (gfloat)width * for_width;
+          else
+            *natural_height_p = CLUTTER_UNITS_FROM_INT (height);
+        }
     }
   else
     CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->
