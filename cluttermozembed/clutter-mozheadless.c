@@ -69,6 +69,7 @@ struct _ClutterMozHeadlessPrivate
   GList           *views;
   gchar           *shm_name;
   gint             waiting_for_ack;
+  gboolean         pending_resize;
   gchar           *input_file;
   gchar           *output_file;
 
@@ -424,6 +425,45 @@ send_mack (ClutterMozHeadlessView *view)
 }
 
 static void
+clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
+{
+  MozHeadless *headless = MOZ_HEADLESS (moz_headless);
+  ClutterMozHeadlessPrivate *priv = moz_headless->priv;
+
+  moz_headless_set_surface (headless, NULL, 0, 0, 0);
+  moz_headless_set_size (headless,
+                         priv->surface_width - 0,
+                         priv->surface_height - 0);
+  
+  if (priv->mmap_start)
+    munmap (priv->mmap_start, priv->mmap_length);
+
+  priv->mmap_length = priv->surface_width * priv->surface_height * 4;
+  ftruncate (priv->shm_fd, priv->mmap_length);
+  priv->mmap_start = mmap (NULL, priv->mmap_length, PROT_READ | PROT_WRITE,
+                           MAP_SHARED, priv->shm_fd, 0);
+  
+  moz_headless_set_surface (headless, priv->mmap_start,
+                            priv->surface_width, priv->surface_height,
+                            priv->surface_width * 4);
+}
+
+static void
+clutter_moz_headless_unfreeze (ClutterMozHeadless *moz_headless)
+{
+  MozHeadless *headless = MOZ_HEADLESS (moz_headless);
+  ClutterMozHeadlessPrivate *priv = moz_headless->priv;
+
+  moz_headless_freeze_updates (headless, FALSE);
+
+  if (priv->pending_resize)
+    {
+      clutter_moz_headless_resize (moz_headless);
+      priv->pending_resize = FALSE;
+    }
+}
+
+static void
 process_command (ClutterMozHeadlessView *view, gchar *command)
 {
   gchar *detail;
@@ -454,7 +494,7 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
       priv->waiting_for_ack --;
 
       if (priv->waiting_for_ack == 0)
-        moz_headless_freeze_updates (headless, FALSE);
+        clutter_moz_headless_unfreeze (moz_headless);
     }
   else if (g_str_equal (command, "open"))
     {
@@ -468,23 +508,11 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
       
       priv->surface_width = atoi (params[0]);
       priv->surface_height = atoi (params[1]);
-      
-      moz_headless_set_surface (headless, NULL, 0, 0, 0);
-      moz_headless_set_size (headless,
-                             priv->surface_width - 0,
-                             priv->surface_height - 0);
-      
-      if (priv->mmap_start)
-        munmap (priv->mmap_start, priv->mmap_length);
 
-      priv->mmap_length = priv->surface_width * priv->surface_height * 4;
-      ftruncate (priv->shm_fd, priv->mmap_length);
-      priv->mmap_start = mmap (NULL, priv->mmap_length, PROT_READ | PROT_WRITE,
-                               MAP_SHARED, priv->shm_fd, 0);
-      
-      moz_headless_set_surface (headless, priv->mmap_start,
-                                priv->surface_width, priv->surface_height,
-                                priv->surface_width * 4);
+      if (priv->waiting_for_ack)
+        priv->pending_resize = TRUE;
+      else
+        clutter_moz_headless_resize (moz_headless);
     }
   else if (g_str_equal (command, "motion"))
     {
@@ -674,7 +702,7 @@ disconnect_view (ClutterMozHeadlessView *view)
     {
       priv->waiting_for_ack --;
       if (priv->waiting_for_ack == 0)
-        moz_headless_freeze_updates (MOZ_HEADLESS (view->parent), FALSE);
+        clutter_moz_headless_unfreeze (view->parent);
     }
 
   if (view->monitor)
