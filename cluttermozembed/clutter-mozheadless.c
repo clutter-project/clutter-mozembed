@@ -157,6 +157,20 @@ title_cb (ClutterMozHeadless *headless)
 }
 
 static void
+icon_cb (ClutterMozHeadless *headless)
+{
+  gchar *icon, *feedback;
+
+  icon = moz_headless_get_icon (MOZ_HEADLESS (headless));
+  feedback = g_strdup_printf ("icon %s", icon);
+
+  send_feedback_all (headless, feedback);
+
+  g_free (feedback);
+  g_free (icon);
+}
+
+static void
 progress_cb (ClutterMozHeadless *headless,
              gint                curprogress,
              gint                maxprogress)
@@ -941,6 +955,8 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (title_cb), NULL);
   g_signal_connect (object, "progress",
                     G_CALLBACK (progress_cb), NULL);
+  g_signal_connect (object, "icon",
+                    G_CALLBACK (icon_cb), NULL);
   g_signal_connect (object, "net-start",
                     G_CALLBACK (net_start_cb), NULL);
   g_signal_connect (object, "net-stop",

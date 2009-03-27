@@ -49,6 +49,7 @@ enum
  
   PROP_LOCATION,
   PROP_TITLE,
+  PROP_ICON,
   PROP_READONLY,
   PROP_INPUT,
   PROP_OUTPUT,
@@ -105,6 +106,7 @@ struct _ClutterMozEmbedPrivate
   /* Locally cached properties */
   gchar           *location;
   gchar           *title;
+  gchar           *icon;
   
   /* Scroll coordinates for sliding-window (FUTURE) */
   /*
@@ -341,6 +343,17 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       
       priv->title = g_strdup (detail);
       g_object_notify (G_OBJECT (self), "title");
+    }
+  else if (g_str_equal (command, "icon"))
+    {
+      g_free (priv->icon);
+      priv->icon = NULL;
+
+      if (!detail)
+        return;
+
+      priv->icon = g_strdup (detail);
+      g_object_notify (G_OBJECT (self), "icon");
     }
   else if (g_str_equal (command, "net-start"))
     {
@@ -813,6 +826,10 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
 
   case PROP_SHM :
     g_value_set_string (value, self->priv->shm_name);
+    break;
+
+  case PROP_ICON :
+    g_value_set_string (value, clutter_mozembed_get_icon (self));
     break;
 
   default:
@@ -1942,6 +1959,18 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                          G_PARAM_CONSTRUCT_ONLY));
 
 
+  g_object_class_install_property (object_class,
+                                   PROP_ICON,
+                                   g_param_spec_string ("icon",
+                                                        "Icon",
+                                                        "URL to the icon "
+                                                        "for this page",
+                                                        NULL,
+                                                        G_PARAM_READABLE |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_NICK |
+                                                        G_PARAM_STATIC_BLURB));
+
   signals[PROGRESS] =
     g_signal_new ("progress",
                   G_TYPE_FROM_CLASS (klass),
@@ -2089,6 +2118,13 @@ clutter_mozembed_get_title (ClutterMozEmbed *mozembed)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
   return priv->title;
+}
+
+const gchar *
+clutter_mozembed_get_icon (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  return priv->icon;
 }
 
 gboolean

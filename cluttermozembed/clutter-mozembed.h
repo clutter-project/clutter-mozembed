@@ -81,6 +81,7 @@ void clutter_mozembed_connect_view (ClutterMozEmbed *mozembed,
 void clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri);
 const gchar *clutter_mozembed_get_location (ClutterMozEmbed *mozembed);
 const gchar *clutter_mozembed_get_title (ClutterMozEmbed *mozembed);
+const gchar *clutter_mozembed_get_icon (ClutterMozEmbed *mozembed);
 gboolean clutter_mozembed_can_go_back (ClutterMozEmbed *mozembed);
 gboolean clutter_mozembed_can_go_forward (ClutterMozEmbed *mozembed);
 void clutter_mozembed_back (ClutterMozEmbed *mozembed);
