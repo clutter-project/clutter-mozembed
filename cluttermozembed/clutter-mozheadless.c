@@ -814,7 +814,8 @@ input_io_func (GIOChannel              *source,
       break;
     
     case G_IO_HUP :
-      g_warning ("Hung up");
+      /* Don't warn on this, this is fine */
+      /*g_warning ("Hung up");*/
       break;
     
     default :

@@ -426,8 +426,6 @@ input_io_func (GIOChannel      *source,
                GIOCondition     condition,
                ClutterMozEmbed *self)
 {
-  ClutterMozEmbedPrivate *priv = self->priv;
-
   /* FYI: Maximum URL length in IE is 2083 characters */
   gchar buf[4096];
   gsize length;
@@ -450,7 +448,7 @@ input_io_func (GIOChannel      *source,
             process_feedback (self, feedback);
           }
         return TRUE;
-      } else if (status == G_IO_STATUS_ERROR && error) {
+      } else if (status == G_IO_STATUS_ERROR) {
         g_warning ("Error reading from source: %s", error->message);
         g_error_free (error);
       } else if (status == G_IO_STATUS_EOF) {
@@ -464,24 +462,17 @@ input_io_func (GIOChannel      *source,
       break;
     
     case G_IO_HUP :
-      g_warning ("Hung up");
-
-      /* prevent any more calls to this function */
-      if (priv->watch_id) {
-        g_source_remove (priv->watch_id);
-        priv->watch_id = 0;
-      }
-
+      g_warning ("Unexpected hang-up");
       break;
     
     default :
       g_warning ("Unhandled IO condition");
-      return FALSE;
+      break;
   }
 
   g_signal_emit (self, signals[CRASHED], 0);
   
-  return TRUE;
+  return FALSE;
 }
 
 static void
@@ -1805,7 +1796,9 @@ clutter_mozembed_constructed (GObject *object)
           success = g_spawn_async_with_pipes (NULL,
                                               argv,
                                               NULL,
-                                              G_SPAWN_SEARCH_PATH,
+                                              G_SPAWN_SEARCH_PATH |
+                                              G_SPAWN_STDERR_TO_DEV_NULL |
+                                              G_SPAWN_STDOUT_TO_DEV_NULL,
                                               NULL,
                                               NULL,
                                               &priv->child_pid,
