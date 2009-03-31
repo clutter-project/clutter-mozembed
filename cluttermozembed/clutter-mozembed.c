@@ -948,10 +948,6 @@ clutter_mozembed_dispose (GObject *object)
     }
 
   if (priv->watch_id) {
-    /* FIXME: Following is a temporary fix */
-    /*send_command (mozembed, "quit");
-    block_until_feedback (mozembed, "closed");*/
-
     g_source_remove (priv->watch_id);
     priv->watch_id = 0;
   }
