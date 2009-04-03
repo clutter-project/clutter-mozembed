@@ -73,7 +73,6 @@ struct _ClutterMozHeadlessPrivate
   gchar           *input_file;
   gchar           *output_file;
 
-  gboolean         missed_update;
   int              shm_fd;
   void            *mmap_start;
   size_t           mmap_length;
@@ -211,63 +210,25 @@ updated_cb (MozHeadless        *headless,
             gint                width,
             gint                height)
 {
-  static gint n_missed_updates = 0;
-
-  /*gint doc_width, doc_height, sx, sy*/;
+  gint doc_width, doc_height, sx, sy;
   GList *v;
   gchar *feedback;
   
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (headless)->priv;
   
-  if (priv->waiting_for_ack)
-    {
-      if (!priv->missed_update)
-        {
-          priv->last_x = x;
-          priv->last_y = y;
-          priv->last_width = width;
-          priv->last_height = height;
-          priv->missed_update = TRUE;
-        }
-      else
-        {
-          n_missed_updates ++;
-
-          if (x + width > priv->last_x + priv->last_width)
-            priv->last_width = (x + width) - priv->last_x;
-          if (y + height > priv->last_y + priv->last_height)
-            priv->last_height = (y + height) - priv->last_y;
-          if (x < priv->last_x)
-            {
-              priv->last_width += priv->last_x - x;
-              priv->last_x = x;
-            }
-          if (y < priv->last_y)
-            {
-              priv->last_height += priv->last_y - y;
-              priv->last_y = y;
-            }
-        }
-      
-      return;
-    }
-  
   /*g_debug ("Update +%d+%d %dx%d", x, y, width, height);*/
-  /*moz_headless_get_document_size (headless, &doc_width, &doc_height);*/
-  /*g_debug ("Doc-size: %dx%d", doc_width, doc_height);*/
-  
-  priv->missed_update = FALSE;
-  if (n_missed_updates) {
-    g_debug ("%d missed updates", n_missed_updates);
-    n_missed_updates = 0;
-  }
-  
+
   msync (priv->mmap_start, priv->mmap_length, MS_SYNC);
 
-  /*moz_headless_get_scroll_pos (headless, &sx, &sy);*/
-  feedback = g_strdup_printf ("update %d %d %d %d %d %d",
+  moz_headless_get_document_size (headless, &doc_width, &doc_height);
+  moz_headless_get_scroll_pos (headless, &sx, &sy);
+
+  /*g_debug ("Doc-size: %dx%d", doc_width, doc_height);*/
+  
+  feedback = g_strdup_printf ("update %d %d %d %d %d %d %d %d %d %d",
                               x, y, width, height,
-                              priv->surface_width, priv->surface_height);
+                              priv->surface_width, priv->surface_height,
+                              sx, sy, doc_width, doc_height);
   send_feedback_all (CLUTTER_MOZHEADLESS (headless), feedback);
   g_free (feedback);
   
@@ -333,6 +294,7 @@ file_changed_cb (GFileMonitor           *monitor,
                  ClutterMozHeadlessView *view)
 {
   gint fd;
+  gint doc_width, doc_height, sx, sy;
   gchar *feedback;
   
   ClutterMozHeadlessPrivate *priv = view->parent->priv;
@@ -361,9 +323,14 @@ file_changed_cb (GFileMonitor           *monitor,
   send_feedback (view, feedback);
   g_free (feedback);
 
-  feedback = g_strdup_printf ("update 0 0 %d %d %d %d",
+  moz_headless_get_document_size (MOZ_HEADLESS (view->parent),
+                                  &doc_width, &doc_height);
+  moz_headless_get_scroll_pos (MOZ_HEADLESS (view->parent), &sx, &sy);
+
+  feedback = g_strdup_printf ("update 0 0 %d %d %d %d %d %d %d %d",
                               priv->surface_width, priv->surface_height,
-                              priv->surface_width, priv->surface_height);
+                              priv->surface_width, priv->surface_height,
+                              sx, sy, doc_width, doc_height);
   send_feedback (view, feedback);
   g_free (feedback);
   
@@ -653,6 +620,27 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
   else if (g_str_equal (command, "reload"))
     {
       moz_headless_reload (headless, MOZ_HEADLESS_FLAG_RELOADBYPASSCACHE);
+    }
+  else if (g_str_equal (command, "set-chrome"))
+    {
+      gchar *params[1];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      moz_headless_set_chrome_mask (headless, atoi (params[0]));
+    }
+  else if (g_str_equal (command, "toggle-chrome"))
+    {
+      guint32 chrome;
+      gchar *params[1];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      chrome = moz_headless_get_chrome_mask (headless);
+      chrome ^= atoi (params[0]);
+      moz_headless_set_chrome_mask (headless, chrome);
     }
   else if (g_str_equal (command, "quit"))
     {
@@ -944,11 +932,6 @@ clutter_mozheadless_constructed (GObject *object)
   priv->shm_fd = shm_open (priv->shm_name, O_CREAT | O_RDWR | O_TRUNC, 0666);
   if (priv->shm_fd == -1)
     g_error ("Error opening shared memory");
-  
-  /* Remove scrollbars */
-  /*moz_headless_set_chrome_mask (headless, 0);*/
-
-  /*moz_headless_set_surface_offset (headless, 50, 50);*/
   
   g_signal_connect (object, "location",
                     G_CALLBACK (location_cb), NULL);

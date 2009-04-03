@@ -55,6 +55,11 @@ enum
   PROP_OUTPUT,
   PROP_SHM,
   PROP_SPAWN,
+  PROP_SMOOTH_SCROLL,
+  PROP_DOC_WIDTH,
+  PROP_DOC_HEIGHT,
+  PROP_SCROLL_X,
+  PROP_SCROLL_Y
 };
 
 enum
@@ -107,13 +112,15 @@ struct _ClutterMozEmbedPrivate
   gchar           *location;
   gchar           *title;
   gchar           *icon;
-  
-  /* Scroll coordinates for sliding-window (FUTURE) */
-  /*
+  gint             doc_width;
+  gint             doc_height;
   gint             scroll_x;
   gint             scroll_y;
-  gint             page_width;
-  gint             page_height;*/
+
+  /* Offsets for async (smooth) scrolling mode */
+  gint             offset_x;
+  gint             offset_y;
+  gboolean         async_scroll;
 
 #ifdef SUPPORT_PLUGINS
   /* The window given for us to parent a plugin viewport onto */
@@ -165,6 +172,22 @@ separate_strings (gchar **strings, gint n_strings, gchar *string)
 }
 
 static void
+clamp_offset (ClutterMozEmbed *self)
+{
+  gint width, height;
+
+  ClutterMozEmbedPrivate *priv = self->priv;
+
+  clutter_texture_get_base_size (CLUTTER_TEXTURE (self), &width, &height);
+  priv->offset_x = CLAMP (priv->offset_x,
+                          -(priv->doc_width - width - priv->scroll_x),
+                          priv->scroll_x);
+  priv->offset_y = CLAMP (priv->offset_y,
+                          -(priv->doc_height - height - priv->scroll_y),
+                          priv->scroll_y);
+}
+
+static void
 update (ClutterMozEmbed *self,
         gint             x,
         gint             y,
@@ -178,7 +201,7 @@ update (ClutterMozEmbed *self,
 
   ClutterMozEmbedPrivate *priv = self->priv;
   GError *error = NULL;
-  
+
   if (!priv->opened_shm)
     {
       /*g_debug ("Opening shm");*/
@@ -286,20 +309,33 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
   if (g_str_equal (command, "update"))
     {
-      gint x, y, width, height, surface_width, surface_height;
+      gint x, y, width, height, surface_width, surface_height, sx, sy;
       
-      gchar *params[6];
+      gchar *params[10];
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
-      
+
       x = atoi (params[0]);
       y = atoi (params[1]);
       width = atoi (params[2]);
       height = atoi (params[3]);
       surface_width = atoi (params[4]);
       surface_height = atoi (params[5]);
+      sx = atoi (params[6]);
+      sy = atoi (params[7]);
+      priv->doc_width = atoi (params[8]);
+      priv->doc_height = atoi (params[9]);
       
       priv->new_data = TRUE;
+
+      /* Update async scrolling offset */
+      priv->offset_x += sx - priv->scroll_x;
+      priv->offset_y += sy - priv->scroll_y;
+
+      /* Clamp in case document size has changed */
+      priv->scroll_x = sx;
+      priv->scroll_y = sy;
+      clamp_offset (self);
       
       update (self, x, y, width, height, surface_width, surface_height);
       
@@ -823,6 +859,26 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_string (value, clutter_mozembed_get_icon (self));
     break;
 
+  case PROP_SMOOTH_SCROLL :
+    g_value_set_boolean (value, clutter_mozembed_get_smooth_scroll (self));
+    break;
+
+  case PROP_DOC_WIDTH :
+    g_value_set_int (value, self->priv->doc_width);
+    break;
+
+  case PROP_DOC_HEIGHT :
+    g_value_set_int (value, self->priv->doc_height);
+    break;
+
+  case PROP_SCROLL_X :
+    g_value_set_int (value, self->priv->scroll_x);
+    break;
+
+  case PROP_SCROLL_Y :
+    g_value_set_int (value, self->priv->scroll_y);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -855,6 +911,19 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
   case PROP_SPAWN :
     priv->spawn = g_value_get_boolean (value);
     break;
+
+  case PROP_SMOOTH_SCROLL :
+    clutter_mozembed_set_smooth_scroll (self, g_value_get_boolean (value));
+    break;
+
+  case PROP_SCROLL_X :
+    clutter_mozembed_scroll_by (self, g_value_get_int (value) -
+                                      (priv->scroll_x + priv->offset_y), 0);
+    break;
+
+  case PROP_SCROLL_Y :
+    clutter_mozembed_scroll_by (self, 0, g_value_get_int (value) -
+                                         (priv->scroll_y + priv->offset_x));
 
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
@@ -1169,15 +1238,25 @@ clutter_mozembed_paint (ClutterActor *actor)
 {
   ClutterMozEmbed *self = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = self->priv;
-#ifdef SUPPORT_PLUGINS
   ClutterGeometry geom;
+#ifdef SUPPORT_PLUGINS
   GList *pwin;
 #endif
 
+  clutter_actor_get_allocation_geometry (actor, &geom);
+
+  /* Offset if we're using async scrolling */
+  if (priv->async_scroll)
+    {
+      cogl_clip_push (0, 0, geom.width, geom.height);
+      cogl_translate (priv->offset_x, priv->offset_y, 0);
+    }
+
+  /* Paint texture */
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->paint (actor);
 
 #ifdef SUPPORT_PLUGINS
-  clutter_actor_get_allocation_geometry (actor, &geom);
+  /* Paint plugin windows */
   cogl_clip_push (geom.x, geom.y, geom.width, geom.height);
   for (pwin = priv->plugin_windows; pwin != NULL; pwin = pwin->next)
     {
@@ -1189,6 +1268,9 @@ clutter_mozembed_paint (ClutterActor *actor)
     }
   cogl_clip_pop ();
 #endif
+
+  if (priv->async_scroll)
+    cogl_clip_pop ();
 
   if (priv->new_data && CLUTTER_ACTOR_IS_VISIBLE (actor))
     {
@@ -1643,7 +1725,28 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
       button = 7;
       break;
     }
-  
+
+  if (priv->async_scroll)
+    {
+      /* FIXME: Maybe we shouldn't do this? */
+      switch (event->direction)
+        {
+        case CLUTTER_SCROLL_UP :
+          clutter_mozembed_scroll_by (CLUTTER_MOZEMBED (actor), 0, -50);
+          break;
+        default:
+        case CLUTTER_SCROLL_DOWN :
+          clutter_mozembed_scroll_by (CLUTTER_MOZEMBED (actor), 0, 50);
+          break;
+        case CLUTTER_SCROLL_LEFT :
+          clutter_mozembed_scroll_by (CLUTTER_MOZEMBED (actor), -50, 0);
+          break;
+        case CLUTTER_SCROLL_RIGHT :
+          clutter_mozembed_scroll_by (CLUTTER_MOZEMBED (actor), 50, 0);
+          break;
+        }
+    }
+
   command =
     g_strdup_printf ("button-press %d %d %d %d %u",
                      CLUTTER_UNITS_TO_INT (x_out),
@@ -1960,6 +2063,64 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                         G_PARAM_STATIC_NICK |
                                                         G_PARAM_STATIC_BLURB));
 
+  g_object_class_install_property (object_class,
+                                   PROP_SMOOTH_SCROLL,
+                                   g_param_spec_boolean ("smooth-scroll",
+                                                         "Smooth scrolling",
+                                                         "Use asynchronous "
+                                                         "(smooth) scrolling.",
+                                                         FALSE,
+                                                         G_PARAM_READWRITE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_DOC_WIDTH,
+                                   g_param_spec_int ("doc-width",
+                                                     "Document width",
+                                                     "Width of the document.",
+                                                     0, G_MAXINT, 0,
+                                                     G_PARAM_READABLE |
+                                                     G_PARAM_STATIC_NAME |
+                                                     G_PARAM_STATIC_NICK |
+                                                     G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_DOC_HEIGHT,
+                                   g_param_spec_int ("doc-height",
+                                                     "Document height",
+                                                     "Height of the document.",
+                                                     0, G_MAXINT, 0,
+                                                     G_PARAM_READABLE |
+                                                     G_PARAM_STATIC_NAME |
+                                                     G_PARAM_STATIC_NICK |
+                                                     G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_SCROLL_X,
+                                   g_param_spec_int ("scroll-x",
+                                                     "Scroll X",
+                                                     "Current X-axis scroll "
+                                                     "position.",
+                                                     0, G_MAXINT, 0,
+                                                     G_PARAM_READWRITE |
+                                                     G_PARAM_STATIC_NAME |
+                                                     G_PARAM_STATIC_NICK |
+                                                     G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_SCROLL_Y,
+                                   g_param_spec_int ("scroll-y",
+                                                     "Scroll Y",
+                                                     "Current Y-axis scroll "
+                                                     "position.",
+                                                     0, G_MAXINT, 0,
+                                                     G_PARAM_READWRITE |
+                                                     G_PARAM_STATIC_NAME |
+                                                     G_PARAM_STATIC_NICK |
+                                                     G_PARAM_STATIC_BLURB));
+
   signals[PROGRESS] =
     g_signal_new ("progress",
                   G_TYPE_FROM_CLASS (klass),
@@ -2166,5 +2327,47 @@ void
 clutter_mozembed_reload (ClutterMozEmbed *mozembed)
 {
   send_command (mozembed, "reload");
+}
+
+gboolean
+clutter_mozembed_get_smooth_scroll (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  return priv->async_scroll;
+}
+
+void
+clutter_mozembed_set_smooth_scroll (ClutterMozEmbed *mozembed, gboolean smooth)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  if (priv->async_scroll != smooth)
+    {
+      gchar *command;
+      priv->async_scroll = smooth;
+      
+      command = g_strdup_printf ("toggle-chrome %d",
+                                 MOZ_HEADLESS_FLAG_SCROLLBARSON);
+      send_command (mozembed, command);
+      g_free (command);
+    }
+}
+
+void
+clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy)
+{
+  gchar *command;
+
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  command = g_strdup_printf ("scroll %d %d", dx, dy);
+  send_command (mozembed, command);
+  g_free (command);
+
+  priv->offset_x -= dx;
+  priv->offset_y -= dy;
+
+  clamp_offset (mozembed);
+  clutter_actor_queue_redraw (CLUTTER_ACTOR (mozembed));
 }
 

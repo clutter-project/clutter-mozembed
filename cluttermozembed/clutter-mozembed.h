@@ -90,6 +90,10 @@ void clutter_mozembed_stop (ClutterMozEmbed *mozembed);
 void clutter_mozembed_refresh (ClutterMozEmbed *mozembed);
 void clutter_mozembed_reload (ClutterMozEmbed *mozembed);
 
+gboolean clutter_mozembed_get_smooth_scroll (ClutterMozEmbed *mozembed);
+void clutter_mozembed_set_smooth_scroll (ClutterMozEmbed *mozembed, gboolean smooth);
+void clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy);
+
 G_END_DECLS
 
 #endif /* _CLUTTER_MOZEMBED */
