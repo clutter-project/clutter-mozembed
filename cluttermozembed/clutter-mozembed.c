@@ -309,7 +309,7 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
   if (g_str_equal (command, "update"))
     {
-      gint x, y, width, height, surface_width, surface_height, sx, sy;
+      gint x, y, width, height, surface_width, surface_height, dx, dy, sx, sy;
       
       gchar *params[10];
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
@@ -323,18 +323,37 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       surface_height = atoi (params[5]);
       sx = atoi (params[6]);
       sy = atoi (params[7]);
-      priv->doc_width = atoi (params[8]);
-      priv->doc_height = atoi (params[9]);
+      dx = atoi (params[8]);
+      dy = atoi (params[9]);
       
       priv->new_data = TRUE;
+
+      if (priv->doc_width != dx)
+        {
+          priv->doc_width = dx;
+          g_object_notify (G_OBJECT (self), "doc-width");
+        }
+      if (priv->doc_height != dy)
+        {
+          priv->doc_height = dy;
+          g_object_notify (G_OBJECT (self), "doc-height");
+        }
 
       /* Update async scrolling offset */
       priv->offset_x += sx - priv->scroll_x;
       priv->offset_y += sy - priv->scroll_y;
 
       /* Clamp in case document size has changed */
-      priv->scroll_x = sx;
-      priv->scroll_y = sy;
+      if (priv->scroll_x != sx)
+        {
+          priv->scroll_x = sx;
+          g_object_notify (G_OBJECT (self), "scroll-x");
+        }
+      if (priv->scroll_y != sy)
+        {
+          priv->scroll_y = sy;
+          g_object_notify (G_OBJECT (self), "scroll-y");
+        }
       clamp_offset (self);
       
       update (self, x, y, width, height, surface_width, surface_height);
@@ -924,6 +943,7 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
   case PROP_SCROLL_Y :
     clutter_mozembed_scroll_by (self, 0, g_value_get_int (value) -
                                          (priv->scroll_y + priv->offset_x));
+    break;
 
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
