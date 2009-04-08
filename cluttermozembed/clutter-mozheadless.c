@@ -327,18 +327,22 @@ file_changed_cb (GFileMonitor           *monitor,
                                   &doc_width, &doc_height);
   moz_headless_get_scroll_pos (MOZ_HEADLESS (view->parent), &sx, &sy);
 
-  feedback = g_strdup_printf ("update 0 0 %d %d %d %d %d %d %d %d",
-                              priv->surface_width, priv->surface_height,
-                              priv->surface_width, priv->surface_height,
-                              sx, sy, doc_width, doc_height);
-  send_feedback (view, feedback);
-  g_free (feedback);
-  
-  if (!priv->waiting_for_ack)
-    moz_headless_freeze_updates (MOZ_HEADLESS (view->parent), TRUE);
+  /* If we have an active surface, send an update to this new view */
+  if (priv->mmap_start)
+    {
+      feedback = g_strdup_printf ("update 0 0 %d %d %d %d %d %d %d %d",
+                                  priv->surface_width, priv->surface_height,
+                                  priv->surface_width, priv->surface_height,
+                                  sx, sy, doc_width, doc_height);
+      send_feedback (view, feedback);
+      g_free (feedback);
 
-  view->waiting_for_ack = TRUE;
-  priv->waiting_for_ack ++;
+      if (!priv->waiting_for_ack)
+        moz_headless_freeze_updates (MOZ_HEADLESS (view->parent), TRUE);
+
+      view->waiting_for_ack = TRUE;
+      priv->waiting_for_ack ++;
+    }
 }
 
 static void
