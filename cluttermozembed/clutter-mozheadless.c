@@ -269,6 +269,7 @@ new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
                                 "input", priv->new_input_file,
                                 "shm", priv->new_shm_name,
                                 NULL);
+      moz_headless_set_chrome_mask (*newEmbed, chromemask);
     }
 
   g_free (priv->new_input_file);
@@ -1046,7 +1047,7 @@ main (int argc, char **argv)
   
   /* Initialise mozilla */
   moz_headless_set_path (MOZHOME);
-  
+
   moz_headless = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
                                "output", argv[1],
                                "input", argv[2],
@@ -1056,7 +1057,7 @@ main (int argc, char **argv)
   /* Begin */
   mainloop = g_main_loop_new (NULL, FALSE);
   g_main_loop_run (mainloop);
-  
+
   return 0;
 }
 
