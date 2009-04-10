@@ -1105,7 +1105,9 @@ clutter_mozembed_finalize (GObject *object)
   g_free (priv->input_file);
   g_free (priv->output_file);
   g_free (priv->shm_name);
+#ifdef SUPPORT_PLUGINS
   g_free (priv->pending_url);
+#endif
 
   if (priv->image_data)
     munmap (priv->image_data, priv->image_size);
@@ -2293,6 +2295,7 @@ clutter_mozembed_connect_view (ClutterMozEmbed *mozembed,
 void
 clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri)
 {
+#ifdef SUPPORT_PLUGINS
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
   if (!clutter_mozembed_init_viewport (mozembed))
@@ -2301,17 +2304,20 @@ clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri)
       priv->pending_url = g_strdup (uri);
       return;
     }
+#endif
 
   gchar *command = g_strdup_printf ("open %s", uri);
   send_command (mozembed, command);
   g_free (command);
 
+#ifdef SUPPORT_PLUGINS
   if (priv->pending_open)
     {
       priv->pending_open = FALSE;
       g_free (priv->pending_url);
       priv->pending_url = NULL;
     }
+#endif
 }
 
 const gchar *
