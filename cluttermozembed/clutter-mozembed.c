@@ -131,8 +131,15 @@ struct _ClutterMozEmbedPrivate
   Window           plugin_viewport;
 
   GList           *plugin_windows;
+
+  Window           stage_xwin;
+
+  gboolean         pending_open;
+  gchar           *pending_url;
 #endif
 };
+
+static void clutter_mozembed_open_pipes (ClutterMozEmbed *self);
 
 #ifdef SUPPORT_PLUGINS
 typedef struct _PluginWindow
@@ -602,8 +609,8 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
   if (!priv->plugin_viewport)
     return;
 
-  g_object_get (G_OBJECT (mozembed), "visible", &visible, NULL);
-  g_object_get (G_OBJECT (mozembed), "reactive", &reactive, NULL);
+  visible = CLUTTER_ACTOR_IS_VISIBLE (mozembed);
+  reactive = CLUTTER_ACTOR_IS_REACTIVE (mozembed);
 
   clutter_actor_get_allocation_geometry (CLUTTER_ACTOR (mozembed), &geom);
 
@@ -740,34 +747,38 @@ reactive_change_cb (GObject    *object,
   clutter_mozembed_sync_plugin_viewport_pos (CLUTTER_MOZEMBED (object));
 }
 
-static void
+static gboolean
 clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
   Display *xdpy;
-  Window stage_xwin;
-  ClutterStage *stage;
+  ClutterActor *stage;
   unsigned long pixel;
   int composite_major, composite_minor;
   gchar *command;
 
-  g_return_if_fail (!priv->plugin_viewport);
+  if (priv->plugin_viewport)
+    return TRUE;
 
   if (priv->read_only)
-    return;
+    return FALSE;
 
   xdpy = clutter_x11_get_default_display ();
   if (!xdpy)
-    return;
+    return FALSE;
 
-  stage = CLUTTER_STAGE (clutter_stage_get_default ());
-  stage_xwin = clutter_x11_get_stage_window (stage);
-  if (!stage_xwin)
-    return;
+  stage = clutter_actor_get_stage (CLUTTER_ACTOR (mozembed));
+  if (!stage || !CLUTTER_ACTOR_IS_REALIZED (stage))
+    return FALSE;
 
-  priv->toplevel_window = gdk_window_foreign_new (stage_xwin);
+  priv->stage_xwin = clutter_x11_get_stage_window (CLUTTER_STAGE (stage));
+  if ((priv->stage_xwin == None) ||
+      (priv->stage_xwin == clutter_x11_get_root_window()))
+    return FALSE;
+
+  priv->toplevel_window = gdk_window_foreign_new (priv->stage_xwin);
   if (!priv->toplevel_window)
-    return;
+    return FALSE;
 
   /* XXX: If you uncomment the call to XCompositeRedirectWindow below this can
    * simply help identify the viewport window for different tabs... */
@@ -788,7 +799,7 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
    * so the 100x100 size chosen here is arbitrary */
   priv->plugin_viewport =
     XCreateSimpleWindow (xdpy,
-                         GDK_WINDOW_XID (priv->toplevel_window),
+                         priv->stage_xwin,
                          -100, -100,
                          100, 100,
                          0, /* border width */
@@ -825,13 +836,16 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
                     "notify::reactive",
                     G_CALLBACK (reactive_change_cb),
                     NULL);
-  
+
   command = g_strdup_printf ("plugin-window %lu",
                              (gulong)priv->plugin_viewport);
   send_command (mozembed, command);
   g_free (command);
-  
-  return;
+
+  if (priv->pending_open)
+    clutter_mozembed_open (mozembed, priv->pending_url);
+
+  return TRUE;
 }
 
 static void
@@ -982,8 +996,6 @@ clutter_mozembed_dispose (GObject *object)
       clutter_mozembed_untrap_x_errors ();
       if (status != 0)
         {
-          ClutterStage *stage = CLUTTER_STAGE (clutter_stage_get_default ());
-          Window        stage_xwin = clutter_x11_get_stage_window (stage);
           int           i;
 
           /* To potentially support re-attaching to a mozheadless backend with
@@ -1006,7 +1018,7 @@ clutter_mozembed_dispose (GObject *object)
                * interfere with input. */
               /* XXX: There is the potential for the plugin window to be
                * resized and become visible within the stage. */
-              XReparentWindow (xdpy, children[i], stage_xwin, -width, -height);
+              XReparentWindow (xdpy, children[i], priv->stage_xwin, -width, -height);
 
               XSync (xdpy, False);
               clutter_mozembed_untrap_x_errors ();
@@ -1093,7 +1105,8 @@ clutter_mozembed_finalize (GObject *object)
   g_free (priv->input_file);
   g_free (priv->output_file);
   g_free (priv->shm_name);
-  
+  g_free (priv->pending_url);
+
   if (priv->image_data)
     munmap (priv->image_data, priv->image_size);
   
@@ -1247,9 +1260,11 @@ clutter_mozembed_allocate (ClutterActor          *actor,
     allocate (actor, box, absolute_origin_changed);
 
 #ifdef SUPPORT_PLUGINS
-  clutter_mozembed_sync_plugin_viewport_pos (mozembed);
-  
-  clutter_mozembed_allocate_plugins (mozembed, absolute_origin_changed);
+  if (priv->plugin_viewport)
+    {
+      clutter_mozembed_sync_plugin_viewport_pos (mozembed);
+      clutter_mozembed_allocate_plugins (mozembed, absolute_origin_changed);
+    }
 #endif
 }
 
@@ -1260,6 +1275,7 @@ clutter_mozembed_paint (ClutterActor *actor)
   ClutterMozEmbedPrivate *priv = self->priv;
   ClutterGeometry geom;
 #ifdef SUPPORT_PLUGINS
+  static gboolean first_paint = TRUE;
   GList *pwin;
 #endif
 
@@ -1276,8 +1292,18 @@ clutter_mozembed_paint (ClutterActor *actor)
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->paint (actor);
 
 #ifdef SUPPORT_PLUGINS
+  if (first_paint)
+    {
+      /* We want an actor-mapped signal, but until then, this is a
+       * hacky way of ensuring that we're on a stage.
+       */
+      if (!clutter_mozembed_init_viewport (self))
+        g_warning ("Failed to initialise plugin window");
+      first_paint = FALSE;
+    }
+
   /* Paint plugin windows */
-  cogl_clip_push (geom.x, geom.y, geom.width, geom.height);
+  cogl_clip_push (0, 0, geom.width, geom.height);
   for (pwin = priv->plugin_windows; pwin != NULL; pwin = pwin->next)
     {
       PluginWindow *plugin_window = pwin->data;
@@ -1936,10 +1962,6 @@ clutter_mozembed_constructed (GObject *object)
     }
 
   clutter_mozembed_open_pipes (self);
-
-#ifdef SUPPORT_PLUGINS
-  clutter_mozembed_init_viewport (self);
-#endif
 }
 
 static void
@@ -2271,9 +2293,25 @@ clutter_mozembed_connect_view (ClutterMozEmbed *mozembed,
 void
 clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri)
 {
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  if (!clutter_mozembed_init_viewport (mozembed))
+    {
+      priv->pending_open = TRUE;
+      priv->pending_url = g_strdup (uri);
+      return;
+    }
+
   gchar *command = g_strdup_printf ("open %s", uri);
   send_command (mozembed, command);
   g_free (command);
+
+  if (priv->pending_open)
+    {
+      priv->pending_open = FALSE;
+      g_free (priv->pending_url);
+      priv->pending_url = NULL;
+    }
 }
 
 const gchar *
