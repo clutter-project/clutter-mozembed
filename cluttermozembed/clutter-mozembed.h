@@ -94,6 +94,9 @@ gboolean clutter_mozembed_get_smooth_scroll (ClutterMozEmbed *mozembed);
 void clutter_mozembed_set_smooth_scroll (ClutterMozEmbed *mozembed, gboolean smooth);
 void clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy);
 
+gboolean clutter_mozembed_is_loading (ClutterMozEmbed *mozembed);
+gdouble clutter_mozembed_get_progress (ClutterMozEmbed *mozembed);
+
 G_END_DECLS
 
 #endif /* _CLUTTER_MOZEMBED */

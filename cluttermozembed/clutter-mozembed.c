@@ -116,6 +116,8 @@ struct _ClutterMozEmbedPrivate
   gint             doc_height;
   gint             scroll_x;
   gint             scroll_y;
+  gboolean         is_loading;
+  gdouble          progress;
 
   /* Offsets for async (smooth) scrolling mode */
   gint             offset_x;
@@ -373,16 +375,14 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
     }
   else if (g_str_equal (command, "progress"))
     {
-      gdouble progress;
-      
       gchar *params[1];
 
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
       
-      progress = atof (params[0]);
+      priv->progress = atof (params[0]);
       
-      g_signal_emit (self, signals[PROGRESS], 0, progress);
+      g_signal_emit (self, signals[PROGRESS], 0, priv->progress);
     }
   else if (g_str_equal (command, "location"))
     {
@@ -419,10 +419,13 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
     }
   else if (g_str_equal (command, "net-start"))
     {
+      priv->is_loading = TRUE;
+      priv->progress = 0.0;
       g_signal_emit (self, signals[NET_START], 0);
     }
   else if (g_str_equal (command, "net-stop"))
     {
+      priv->is_loading = FALSE;
       g_signal_emit (self, signals[NET_STOP], 0);
     }
   else if (g_str_equal (command, "back"))
@@ -2433,5 +2436,19 @@ clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy)
 
   clamp_offset (mozembed);
   clutter_actor_queue_redraw (CLUTTER_ACTOR (mozembed));
+}
+
+gboolean
+clutter_mozembed_is_loading (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  return priv->is_loading;
+}
+
+gdouble
+clutter_mozembed_get_progress (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  return priv->progress;
 }
 
