@@ -20,6 +20,7 @@
 #include <config.h>
 
 #include "clutter-mozembed.h"
+#include "clutter-mozembed-marshal.h"
 #include <glib/gstdio.h>
 #include <gio/gio.h>
 #include <moz-headless.h>
@@ -466,7 +467,8 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       g_free (command);
       
       g_object_ref_sink (new_window);
-      g_signal_emit (self, signals[NEW_WINDOW], 0, new_window);
+      g_signal_emit (self, signals[NEW_WINDOW], 0,
+                     new_window, (guint)atoi (params[0]));
       g_object_unref (new_window);
     }
   else if (g_str_equal (command, "closed"))
@@ -2210,8 +2212,8 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   G_SIGNAL_RUN_LAST,
                   G_STRUCT_OFFSET (ClutterMozEmbedClass, new_window),
                   NULL, NULL,
-                  g_cclosure_marshal_VOID__OBJECT,
-                  G_TYPE_NONE, 1, CLUTTER_TYPE_MOZEMBED);
+                  _clutter_mozembed_marshal_VOID__OBJECT_UINT,
+                  G_TYPE_NONE, 2, CLUTTER_TYPE_MOZEMBED, G_TYPE_UINT);
 
   signals[CLOSED] =
     g_signal_new ("closed",
