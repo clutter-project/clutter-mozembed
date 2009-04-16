@@ -49,6 +49,7 @@ enum
   PROP_INPUT,
   PROP_OUTPUT,
   PROP_SHM,
+  PROP_CONNECT_TIMEOUT
 };
 
 typedef struct
@@ -66,30 +67,32 @@ typedef struct
 
 struct _ClutterMozHeadlessPrivate
 {
+  /* Connection/comms variables */
   GList           *views;
-  gchar           *shm_name;
   gint             waiting_for_ack;
   gboolean         pending_resize;
   gchar           *input_file;
   gchar           *output_file;
 
+  /* Shared memory variables */
   int              shm_fd;
+  gchar           *shm_name;
   void            *mmap_start;
   size_t           mmap_length;
 
-  gint             last_x;
-  gint             last_y;
-  gint             last_width;
-  gint             last_height;
-
+  /* Surface property variables */
   gint             surface_width;
   gint             surface_height;
 
-  /* Variables for synchronous calls */
+  /* Synchronous call variables */
   const gchar     *sync_call;
   gchar           *new_input_file;
   gchar           *new_output_file;
   gchar           *new_shm_name;
+
+  /* Connection timeout variables */
+  guint            connect_timeout;
+  guint            connect_timeout_source;
 };
 
 static GMainLoop *mainloop;
@@ -780,6 +783,13 @@ input_io_func (GIOChannel              *source,
   
   switch (condition) {
     case G_IO_IN :
+      /* We've received a connection, remove the disconnect timeout */
+      if (priv->connect_timeout_source)
+        {
+          g_source_remove (priv->connect_timeout_source);
+          priv->connect_timeout_source = 0;
+        }
+
       status = g_io_channel_read_chars (source, buf, sizeof (buf),
                                         &length, &error);
       if (status == G_IO_STATUS_NORMAL) {
@@ -861,6 +871,10 @@ clutter_mozheadless_get_property (GObject *object, guint property_id,
     g_value_set_string (value, priv->shm_name);
     break;
 
+  case PROP_CONNECT_TIMEOUT :
+    g_value_set_uint (value, priv->connect_timeout);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -885,6 +899,10 @@ clutter_mozheadless_set_property (GObject *object, guint property_id,
     priv->shm_name = g_value_dup_string (value);
     break;
 
+  case PROP_CONNECT_TIMEOUT :
+    priv->connect_timeout = g_value_get_uint (value);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -894,13 +912,19 @@ static void
 clutter_mozheadless_dispose (GObject *object)
 {
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (object)->priv;
-  
+
+  if (priv->connect_timeout_source)
+    {
+      g_source_remove (priv->connect_timeout_source);
+      priv->connect_timeout_source = 0;
+    }
+
   while (priv->views)
     {
       ClutterMozHeadlessView *view = priv->views->data;
       disconnect_view (view);
     }
-  
+
   G_OBJECT_CLASS (clutter_mozheadless_parent_class)->dispose (object);
 }
 
@@ -918,6 +942,13 @@ clutter_mozheadless_finalize (GObject *object)
     g_main_loop_quit (mainloop);
   
   G_OBJECT_CLASS (clutter_mozheadless_parent_class)->finalize (object);
+}
+
+static gboolean
+connect_timeout_cb (ClutterMozHeadless *self)
+{
+  g_object_unref (G_OBJECT (self));
+  return FALSE;
 }
 
 static void
@@ -960,6 +991,12 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (destroy_browser_cb), NULL);
 
   spawned_heads ++;
+
+  if (priv->connect_timeout)
+    priv->connect_timeout_source =
+      g_timeout_add (priv->connect_timeout,
+                     (GSourceFunc)connect_timeout_cb,
+                     object);
 }
 
 static void
@@ -1014,12 +1051,27 @@ clutter_mozheadless_class_init (ClutterMozHeadlessClass *klass)
                                                         G_PARAM_STATIC_NICK |
                                                         G_PARAM_STATIC_BLURB |
                                                         G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_CONNECT_TIMEOUT,
+                                   g_param_spec_uint ("connect-timeout",
+                                                      "Connect-timeout",
+                                                      "Amount of time to "
+                                                      "wait for a "
+                                                      "connection (in ms).",
+                                                      0, G_MAXINT, 10000,
+                                                      G_PARAM_READWRITE |
+                                                      G_PARAM_STATIC_NAME |
+                                                      G_PARAM_STATIC_NICK |
+                                                      G_PARAM_STATIC_BLURB |
+                                                      G_PARAM_CONSTRUCT_ONLY));
 }
 
 static void
 clutter_mozheadless_init (ClutterMozHeadless *self)
 {
-  self->priv = MOZHEADLESS_PRIVATE (self);
+  ClutterMozHeadlessPrivate *priv = self->priv = MOZHEADLESS_PRIVATE (self);
+  priv->connect_timeout = 10000;
 }
 
 ClutterMozHeadless *

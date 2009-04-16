@@ -60,7 +60,9 @@ enum
   PROP_DOC_WIDTH,
   PROP_DOC_HEIGHT,
   PROP_SCROLL_X,
-  PROP_SCROLL_Y
+  PROP_SCROLL_Y,
+  PROP_POLL_TIMEOUT,
+  PROP_CONNECT_TIMEOUT
 };
 
 enum
@@ -124,6 +126,13 @@ struct _ClutterMozEmbedPrivate
   gint             offset_x;
   gint             offset_y;
   gboolean         async_scroll;
+
+  /* Connection timeout variables */
+  guint            poll_source;
+  guint            poll_timeout;
+  guint            poll_timeout_source;
+  guint            connect_timeout;
+  guint            connect_timeout_source;
 
 #ifdef SUPPORT_PLUGINS
   /* The window given for us to parent a plugin viewport onto */
@@ -917,6 +926,14 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_int (value, self->priv->scroll_y);
     break;
 
+  case PROP_POLL_TIMEOUT :
+    g_value_set_uint (value, self->priv->poll_timeout);
+    break;
+
+  case PROP_CONNECT_TIMEOUT :
+    g_value_set_uint (value, self->priv->connect_timeout);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -964,15 +981,61 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
                                          (priv->scroll_y + priv->offset_x));
     break;
 
+  case PROP_POLL_TIMEOUT :
+    priv->poll_timeout = g_value_get_uint (value);
+    break;
+
+  case PROP_CONNECT_TIMEOUT :
+    priv->connect_timeout = g_value_get_uint (value);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
 }
 
 static void
+disconnect_poll_sources (ClutterMozEmbed *self)
+{
+  ClutterMozEmbedPrivate *priv = self->priv;
+
+  if (priv->poll_source)
+    {
+      g_source_remove (priv->poll_source);
+      priv->poll_source = 0;
+    }
+
+  if (priv->poll_timeout_source)
+    {
+      g_source_remove (priv->poll_timeout_source);
+      priv->poll_timeout_source = 0;
+    }
+}
+
+static void
+disconnect_file_monitor_sources (ClutterMozEmbed *self)
+{
+  ClutterMozEmbedPrivate *priv = self->priv;
+
+  if (priv->monitor)
+    {
+      g_file_monitor_cancel (priv->monitor);
+      g_object_unref (priv->monitor);
+      priv->monitor = NULL;
+    }
+
+  if (priv->watch_id)
+    {
+      g_source_remove (priv->watch_id);
+      priv->watch_id = 0;
+    }
+}
+
+static void
 clutter_mozembed_dispose (GObject *object)
 {
-  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
+  ClutterMozEmbed *self = CLUTTER_MOZEMBED (object);
+  ClutterMozEmbedPrivate *priv = self->priv;
 #ifdef SUPPORT_PLUGINS
   Display                *xdpy = clutter_x11_get_default_display ();
 
@@ -1046,17 +1109,14 @@ clutter_mozembed_dispose (GObject *object)
     }
 #endif
 
-  if (priv->monitor)
-    {
-      g_file_monitor_cancel (priv->monitor);
-      g_object_unref (priv->monitor);
-      priv->monitor = NULL;
-    }
+  disconnect_poll_sources (self);
+  disconnect_file_monitor_sources (self);
 
-  if (priv->watch_id) {
-    g_source_remove (priv->watch_id);
-    priv->watch_id = 0;
-  }
+  if (priv->connect_timeout_source)
+    {
+      g_source_remove (priv->connect_timeout_source);
+      priv->connect_timeout_source = 0;
+    }
 
   if (priv->input)
     {
@@ -1826,10 +1886,14 @@ file_changed_cb (GFileMonitor      *monitor,
   if (event_type != G_FILE_MONITOR_EVENT_CREATED)
     return;
 
-  g_signal_handlers_disconnect_by_func (monitor, file_changed_cb, self);
-  g_file_monitor_cancel (monitor);
-  g_object_unref (monitor);
-  priv->monitor = NULL;
+  disconnect_poll_sources (self);
+  disconnect_file_monitor_sources (self);
+
+  if (priv->connect_timeout_source)
+    {
+      g_source_remove (priv->connect_timeout_source);
+      priv->connect_timeout_source = 0;
+    }
 
   /* Open input channel */
   fd = open (priv->output_file, O_RDONLY | O_NONBLOCK);
@@ -1842,6 +1906,28 @@ file_changed_cb (GFileMonitor      *monitor,
                                    G_IO_NVAL | G_IO_HUP,
                                    (GIOFunc)input_io_func,
                                    self);
+}
+
+static gboolean
+poll_idle_cb (ClutterMozEmbed *self)
+{
+  ClutterMozEmbedPrivate *priv = self->priv;
+
+  if (g_file_test (priv->output_file, G_FILE_TEST_EXISTS))
+    {
+      file_changed_cb (priv->monitor, NULL, NULL,
+                       G_FILE_MONITOR_EVENT_CREATED, self);
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
+static gboolean
+poll_timeout_cb (ClutterMozEmbed *self)
+{
+  disconnect_poll_sources (self);
+  return FALSE;
 }
 
 static void
@@ -1872,6 +1958,18 @@ clutter_mozembed_open_pipes (ClutterMozEmbed *self)
   if (g_file_test (priv->output_file, G_FILE_TEST_EXISTS))
     file_changed_cb (priv->monitor, NULL, NULL,
                      G_FILE_MONITOR_EVENT_CREATED, self);
+  else
+    {
+      if (priv->poll_timeout)
+        {
+          priv->poll_source = g_idle_add ((GSourceFunc)poll_idle_cb,
+                                          self);
+          priv->poll_timeout_source =
+            g_timeout_add (priv->poll_timeout,
+                           (GSourceFunc)poll_timeout_cb,
+                           self);
+        }
+    }
 
   /* Open output channel */
   mkfifo (priv->input_file, S_IWUSR | S_IRUSR);
@@ -1880,6 +1978,15 @@ clutter_mozembed_open_pipes (ClutterMozEmbed *self)
   g_io_channel_set_encoding (priv->output, NULL, NULL);
   g_io_channel_set_buffered (priv->output, FALSE);
   g_io_channel_set_close_on_unref (priv->output, TRUE);
+}
+
+static gboolean
+connect_timeout_cb (ClutterMozEmbed *self)
+{
+  disconnect_poll_sources (self);
+  disconnect_file_monitor_sources (self);
+  g_signal_emit (self, signals[CRASHED], 0);
+  return FALSE;
 }
 
 static void
@@ -1942,6 +2049,7 @@ clutter_mozembed_constructed (GObject *object)
         {
           g_message ("Waiting for '%s %s %s %s' to be run",
                      argv[0], argv[1], argv[2], argv[3]);
+          priv->connect_timeout = 0;
         }
       else
         {
@@ -1967,6 +2075,12 @@ clutter_mozembed_constructed (GObject *object)
             }
         }
     }
+
+  if (priv->connect_timeout)
+    priv->connect_timeout_source =
+      g_timeout_add (priv->connect_timeout,
+                     (GSourceFunc)connect_timeout_cb,
+                     self);
 
   clutter_mozembed_open_pipes (self);
 }
@@ -2170,6 +2284,34 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                      G_PARAM_STATIC_NICK |
                                                      G_PARAM_STATIC_BLURB));
 
+  g_object_class_install_property (object_class,
+                                   PROP_POLL_TIMEOUT,
+                                   g_param_spec_uint ("poll-timeout",
+                                                      "Poll-timeout",
+                                                      "Amount of time to "
+                                                      "try polling for a "
+                                                      "connection (in ms).",
+                                                      0, G_MAXINT, 1000,
+                                                      G_PARAM_READWRITE |
+                                                      G_PARAM_STATIC_NAME |
+                                                      G_PARAM_STATIC_NICK |
+                                                      G_PARAM_STATIC_BLURB |
+                                                      G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_CONNECT_TIMEOUT,
+                                   g_param_spec_uint ("connect-timeout",
+                                                      "Connect-timeout",
+                                                      "Amount of time to "
+                                                      "wait for a "
+                                                      "connection (in ms).",
+                                                      0, G_MAXINT, 10000,
+                                                      G_PARAM_READWRITE |
+                                                      G_PARAM_STATIC_NAME |
+                                                      G_PARAM_STATIC_NICK |
+                                                      G_PARAM_STATIC_BLURB |
+                                                      G_PARAM_CONSTRUCT_ONLY));
+
   signals[PROGRESS] =
     g_signal_new ("progress",
                   G_TYPE_FROM_CLASS (klass),
@@ -2232,6 +2374,8 @@ clutter_mozembed_init (ClutterMozEmbed *self)
  
   priv->motion_ack = TRUE;
   priv->spawn = TRUE;
+  priv->poll_timeout = 1000;
+  priv->connect_timeout = 10000;
 
   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
   
