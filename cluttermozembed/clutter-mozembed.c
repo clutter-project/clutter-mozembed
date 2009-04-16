@@ -101,7 +101,7 @@ struct _ClutterMozEmbedPrivate
   gboolean         read_only;
 
   gboolean            motion_ack;
-  gulong              motion_throttle;
+  gboolean            pending_motion;
   gint                motion_x;
   gint                motion_y;
   ClutterModifierType motion_m;
@@ -152,6 +152,8 @@ struct _ClutterMozEmbedPrivate
 };
 
 static void clutter_mozembed_open_pipes (ClutterMozEmbed *self);
+static MozHeadlessModifier
+  clutter_mozembed_get_modifier (ClutterModifierType modifiers);
 
 #ifdef SUPPORT_PLUGINS
 typedef struct _PluginWindow
@@ -308,6 +310,19 @@ send_command (ClutterMozEmbed *mozembed, const gchar *command)
 }
 
 static void
+send_motion_event (ClutterMozEmbed *self)
+{
+  ClutterMozEmbedPrivate *priv = self->priv;
+  gchar *command = g_strdup_printf ("motion %d %d %u",
+                                    priv->motion_x, priv->motion_y,
+                                    clutter_mozembed_get_modifier (
+                                      priv->motion_m));
+  send_command (self, command);
+  g_free (command);
+  priv->pending_motion = FALSE;
+}
+
+static void
 process_feedback (ClutterMozEmbed *self, const gchar *command)
 {
   gchar *detail;
@@ -382,6 +397,12 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
   else if (g_str_equal (command, "mack"))
     {
       priv->motion_ack = TRUE;
+
+      if (priv->pending_motion)
+        {
+          send_motion_event (self);
+          priv->pending_motion = FALSE;
+        }
     }
   else if (g_str_equal (command, "progress"))
     {
@@ -1148,12 +1169,6 @@ clutter_mozembed_dispose (GObject *object)
       priv->output = NULL;
     }
 
-  if (priv->motion_throttle)
-    {
-      g_source_remove (priv->motion_throttle);
-      priv->motion_throttle = 0;
-    }
-
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->dispose (object);
 }
 
@@ -1415,25 +1430,6 @@ clutter_mozembed_get_modifier (ClutterModifierType modifiers)
 }
 
 static gboolean
-motion_idle (ClutterMozEmbed *self)
-{
-  gchar *command;
-  ClutterMozEmbedPrivate *priv = self->priv;
-
-  if (!priv->motion_ack)
-    return TRUE;
-
-  command = g_strdup_printf ("motion %d %d %u", priv->motion_x, priv->motion_y,
-                             clutter_mozembed_get_modifier (priv->motion_m));
-  send_command (self, command);
-  g_free (command);
-  
-  priv->motion_throttle = 0;
-
-  return FALSE;
-}
-
-static gboolean
 clutter_mozembed_motion_event (ClutterActor *actor, ClutterMotionEvent *event)
 {
   ClutterMozEmbedPrivate *priv;
@@ -1457,19 +1453,11 @@ clutter_mozembed_motion_event (ClutterActor *actor, ClutterMotionEvent *event)
    */
   if (!priv->motion_ack)
     {
-      if (!priv->motion_throttle)
-        priv->motion_throttle = g_idle_add ((GSourceFunc)motion_idle, actor);
-
+      priv->pending_motion = TRUE;
       return TRUE;
     }
   
-  if (priv->motion_throttle)
-    {
-      g_source_remove (priv->motion_throttle);
-      priv->motion_throttle = 0;
-    }
-  
-  motion_idle (CLUTTER_MOZEMBED (actor));
+  send_motion_event (CLUTTER_MOZEMBED (actor));
   
   priv->motion_ack = FALSE;
   
