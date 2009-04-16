@@ -63,6 +63,7 @@ typedef struct
   guint            watch_id;
   GFileMonitor    *monitor;
   gboolean         waiting_for_ack;
+  guint            mack_source;
 } ClutterMozHeadlessView;
 
 struct _ClutterMozHeadlessPrivate
@@ -409,6 +410,7 @@ separate_strings (gchar **strings, gint n_strings, gchar *string)
 static gboolean
 send_mack (ClutterMozHeadlessView *view)
 {
+  view->mack_source = 0;
   send_feedback (view, "mack");
   return FALSE;
 }
@@ -520,7 +522,11 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
       /* This is done so that we definitely get to do any redrawing before we
        * send an acknowledgement.
        */
-      g_idle_add_full (G_PRIORITY_LOW, (GSourceFunc)send_mack, view, NULL);
+      if (!view->mack_source)
+        view->mack_source =
+          g_idle_add_full (G_PRIORITY_LOW, (GSourceFunc)send_mack, view, NULL);
+      else
+        g_warning ("Received a motion event before sending acknowledgement");
     }
   else if (g_str_equal (command, "button-press"))
     {
@@ -726,6 +732,12 @@ disconnect_view (ClutterMozHeadlessView *view)
     {
       g_source_remove (view->watch_id);
       view->watch_id = 0;
+    }
+
+  if (view->mack_source)
+    {
+      g_source_remove (view->mack_source);
+      view->mack_source = 0;
     }
 
   if (view->input)
