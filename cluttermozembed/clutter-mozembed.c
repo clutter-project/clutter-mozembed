@@ -73,6 +73,7 @@ enum
   CRASHED,
   NEW_WINDOW,
   CLOSED,
+  LINK_MESSAGE,
   
   LAST_SIGNAL
 };
@@ -506,6 +507,10 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       /* If we're in dispose, watch_id will be zero */
       if (priv->watch_id)
         g_signal_emit (self, signals[CLOSED], 0);
+    }
+  else if (g_str_equal (command, "link"))
+    {
+      g_signal_emit (self, signals[LINK_MESSAGE], 0, detail);
     }
   else if (g_str_equal (command, "shm-name"))
     {
@@ -2353,6 +2358,15 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   NULL, NULL,
                   g_cclosure_marshal_VOID__VOID,
                   G_TYPE_NONE, 0);
+
+  signals[LINK_MESSAGE] =
+    g_signal_new ("link-message",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, link_message),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__STRING,
+                  G_TYPE_NONE, 1, G_TYPE_STRING);
 }
 
 static void

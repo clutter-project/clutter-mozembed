@@ -292,6 +292,20 @@ destroy_browser_cb (ClutterMozHeadless *moz_headless)
 }
 
 static void
+link_message_cb (ClutterMozHeadless *self)
+{
+  gchar *feedback, *message;
+
+  message = moz_headless_get_link_message (MOZ_HEADLESS (self));
+  feedback = g_strconcat ("link ", message, NULL);
+  g_free (message);
+
+  send_feedback_all (self, feedback);
+
+  g_free (feedback);
+}
+
+static void
 file_changed_cb (GFileMonitor           *monitor,
                  GFile                  *file,
                  GFile                  *other_file,
@@ -1001,6 +1015,8 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (new_window_cb), NULL);
   g_signal_connect (object, "destroy-browser",
                     G_CALLBACK (destroy_browser_cb), NULL);
+  g_signal_connect (object, "link-message",
+                    G_CALLBACK (link_message_cb), NULL);
 
   spawned_heads ++;
 
