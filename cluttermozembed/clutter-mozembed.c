@@ -62,7 +62,9 @@ enum
   PROP_SCROLL_X,
   PROP_SCROLL_Y,
   PROP_POLL_TIMEOUT,
-  PROP_CONNECT_TIMEOUT
+  PROP_CONNECT_TIMEOUT,
+  PROP_CAN_GO_BACK,
+  PROP_CAN_GO_FORWARD,
 };
 
 enum
@@ -106,12 +108,10 @@ struct _ClutterMozEmbedPrivate
   gint                motion_x;
   gint                motion_y;
   ClutterModifierType motion_m;
-  
+
   /* Variables for synchronous calls */
   const gchar     *sync_call;
-  gboolean         can_go_back;
-  gboolean         can_go_forward;
-  
+
   /* Locally cached properties */
   gchar           *location;
   gchar           *title;
@@ -122,6 +122,8 @@ struct _ClutterMozEmbedPrivate
   gint             scroll_y;
   gboolean         is_loading;
   gdouble          progress;
+  gboolean         can_go_back;
+  gboolean         can_go_forward;
 
   /* Offsets for async (smooth) scrolling mode */
   gint             offset_x;
@@ -463,16 +465,34 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
   else if (g_str_equal (command, "back"))
     {
       gchar *params[1];
+      gboolean back;
+
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
-      priv->can_go_back = atoi (params[0]);
+
+      back = atoi (params[0]);
+
+      if (priv->can_go_back != back)
+        {
+          priv->can_go_back = back;
+          g_object_notify (G_OBJECT (self), "can-go-back");
+        }
     }
   else if (g_str_equal (command, "forward"))
     {
       gchar *params[1];
+      gboolean forward;
+
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
-      priv->can_go_forward = atoi (params[0]);
+
+      forward = atoi (params[0]);
+
+      if (priv->can_go_forward != forward)
+        {
+          priv->can_go_forward = forward;
+          g_object_notify (G_OBJECT (self), "can-go-forward");
+        }
     }
   else if (g_str_equal (command, "new-window?"))
     {
@@ -961,6 +981,14 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
 
   case PROP_CONNECT_TIMEOUT :
     g_value_set_uint (value, self->priv->connect_timeout);
+    break;
+
+  case PROP_CAN_GO_BACK :
+    g_value_set_boolean (value, self->priv->can_go_back);
+    break;
+
+  case PROP_CAN_GO_FORWARD :
+    g_value_set_boolean (value, self->priv->can_go_forward);
     break;
 
   default:
@@ -2308,6 +2336,32 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                       G_PARAM_STATIC_BLURB |
                                                       G_PARAM_CONSTRUCT_ONLY));
 
+  g_object_class_install_property (object_class,
+                                   PROP_CAN_GO_BACK,
+                                   g_param_spec_boolean ("can-go-back",
+                                                         "Can go back",
+                                                         "Whether backwards "
+                                                         "navigation is "
+                                                         "possible.",
+                                                         FALSE,
+                                                         G_PARAM_READABLE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_CAN_GO_FORWARD,
+                                   g_param_spec_boolean ("can-go-forward",
+                                                         "Can go forward",
+                                                         "Whether forwards "
+                                                         "navigation is "
+                                                         "possible.",
+                                                         FALSE,
+                                                         G_PARAM_READABLE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB));
+
   signals[PROGRESS] =
     g_signal_new ("progress",
                   G_TYPE_FROM_CLASS (klass),
@@ -2499,10 +2553,6 @@ gboolean
 clutter_mozembed_can_go_back (ClutterMozEmbed *mozembed)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
-
-  send_command (mozembed, "can-go-back?");
-  block_until_feedback (mozembed, "back");
-  
   return priv->can_go_back;
 }
 
@@ -2510,10 +2560,6 @@ gboolean
 clutter_mozembed_can_go_forward (ClutterMozEmbed *mozembed)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
-
-  send_command (mozembed, "can-go-forward?");
-  block_until_feedback (mozembed, "forward");
-  
   return priv->can_go_forward;
 }
 

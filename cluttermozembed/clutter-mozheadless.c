@@ -306,6 +306,24 @@ link_message_cb (ClutterMozHeadless *self)
 }
 
 static void
+can_go_back_cb (ClutterMozHeadless *self, gboolean can_go_back)
+{
+  gchar *feedback =
+    g_strdup_printf ("back %d", can_go_back);
+  send_feedback_all (self, feedback);
+  g_free (feedback);
+}
+
+static void
+can_go_forward_cb (ClutterMozHeadless *self, gboolean can_go_forward)
+{
+  gchar *feedback =
+    g_strdup_printf ("forward %d", can_go_forward);
+  send_feedback_all (self, feedback);
+  g_free (feedback);
+}
+
+static void
 file_changed_cb (GFileMonitor           *monitor,
                  GFile                  *file,
                  GFile                  *other_file,
@@ -1017,6 +1035,10 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (destroy_browser_cb), NULL);
   g_signal_connect (object, "link-message",
                     G_CALLBACK (link_message_cb), NULL);
+  g_signal_connect (object, "can-go-back",
+                    G_CALLBACK (can_go_back_cb), NULL);
+  g_signal_connect (object, "can-go-forward",
+                    G_CALLBACK (can_go_forward_cb), NULL);
 
   spawned_heads ++;
 
