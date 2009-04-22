@@ -581,9 +581,12 @@ static void
 block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
-  
+
+  if (!priv->input)
+    return;
+
   priv->sync_call = feedback;
-  
+
   /* FIXME: There needs to be a time limit here, or we can hang if the backend
    *        hangs. Here or in input_io_func anyway...
    */
