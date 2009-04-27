@@ -34,6 +34,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <string.h>
+#include <places-glib/places-glib.h>
 
 #include "clutter-mozheadless.h"
 
@@ -1130,9 +1131,69 @@ clutter_mozheadless_new (void)
   return g_object_new (CLUTTER_TYPE_MOZHEADLESS, NULL);
 }
 
+static void
+clutter_mozheadless_history_add_uri (const gchar *uri,
+                                     gboolean     redirect,
+                                     gboolean     top_level,
+                                     const gchar *referrer,
+                                     gpointer     user_data)
+{
+  GError *error = NULL;
+  gboolean result =
+    places_history_add_uri ((PlacesHistory *)user_data,
+                            uri,
+                            redirect,
+                            top_level,
+                            referrer,
+                            &error);
+  if (!result)
+    {
+      g_warning ("Error adding URI: %s", error->message);
+      g_error_free (error);
+    }
+}
+
+static gboolean
+clutter_mozheadless_history_is_visited (const gchar *uri, gpointer user_data)
+{
+  GError *error = NULL;
+  gboolean is_visited = FALSE;
+  gboolean result =
+    places_history_is_visited ((PlacesHistory *)user_data,
+                               uri,
+                               &is_visited,
+                               &error);
+  if (!result)
+    {
+      g_warning ("Error checking is-visited: %s", error->message);
+      g_error_free (error);
+    }
+
+  return is_visited;
+}
+
+static void
+clutter_mozheadless_history_set_page_title (const gchar *uri,
+                                            const gchar *title,
+                                            gpointer     user_data)
+{
+  GError *error = NULL;
+  gboolean result =
+    places_history_set_page_title ((PlacesHistory *)user_data,
+                                   uri,
+                                   title,
+                                   &error);
+  if (!result)
+    {
+      g_warning ("Error setting page title: %s", error->message);
+      g_error_free (error);
+    }
+}
+
 int
 main (int argc, char **argv)
 {
+  PlacesHistory *history;
   ClutterMozHeadless *moz_headless;
 
 #ifdef SUPPORT_PLUGINS
@@ -1149,6 +1210,15 @@ main (int argc, char **argv)
   
   /* Initialise mozilla */
   moz_headless_set_path (MOZHOME);
+  history = places_history_new ();
+  if (history)
+    {
+      moz_headless_set_history_data (history);
+      moz_headless_set_history_callbacks (
+        clutter_mozheadless_history_add_uri,
+        clutter_mozheadless_history_is_visited,
+        clutter_mozheadless_history_set_page_title);
+    }
 
   moz_headless = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
                                "output", argv[1],
@@ -1159,6 +1229,8 @@ main (int argc, char **argv)
   /* Begin */
   mainloop = g_main_loop_new (NULL, FALSE);
   g_main_loop_run (mainloop);
+
+  g_object_unref (history);
 
   return 0;
 }
