@@ -59,7 +59,9 @@ bin_PROGRAMS = clutter-mozheadless
 
 clutter_mozheadless_SOURCES = \
 	clutter-mozheadless.c \
-	clutter-mozheadless.h
+	clutter-mozheadless.h \
+	clutter-mozheadless-history.c \
+	clutter-mozheadless-history.h
 
 lib_LTLIBRARIES = libcluttermozembed.la
 libcluttermozembed_la_SOURCES = $(source_c) $(source_h) $(BUILT_SOURCES)
