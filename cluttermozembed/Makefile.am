@@ -61,7 +61,9 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozheadless.c \
 	clutter-mozheadless.h \
 	clutter-mozheadless-history.c \
-	clutter-mozheadless-history.h
+	clutter-mozheadless-history.h \
+	clutter-mozheadless-prefs.c \
+	clutter-mozheadless-prefs.h
 
 lib_LTLIBRARIES = libcluttermozembed.la
 libcluttermozembed_la_SOURCES = $(source_c) $(source_h) $(BUILT_SOURCES)
