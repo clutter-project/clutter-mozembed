@@ -406,6 +406,7 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       if (priv->pending_motion)
         {
           send_motion_event (self);
+          priv->motion_ack = FALSE;
           priv->pending_motion = FALSE;
         }
     }
