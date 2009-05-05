@@ -19,6 +19,7 @@
  */
 
 #include "clutter-mozheadless-history.h"
+#include <moz-headless.h>
 #include <places-glib/places-glib.h>
 
 static void
@@ -80,6 +81,12 @@ clutter_mozheadless_history_set_page_title (const gchar *uri,
     }
 }
 
+static void
+_link_visited_cb (PlacesHistory *history, const gchar *uri)
+{
+  moz_headless_history_send_link_visited (uri);
+}
+
 static PlacesHistory *history = NULL;
 
 void
@@ -95,6 +102,8 @@ clutter_mozheadless_history_init ()
         clutter_mozheadless_history_add_uri,
         clutter_mozheadless_history_is_visited,
         clutter_mozheadless_history_set_page_title);
+      g_signal_connect (history, "link-visited",
+                        G_CALLBACK (_link_visited_cb), NULL);
     }
 }
 
@@ -103,6 +112,7 @@ clutter_mozheadless_history_deinit ()
 {
   if (history)
     {
+      g_signal_handlers_disconnect_by_func (history, _link_visited_cb, NULL);
       g_object_unref (G_OBJECT (history));
       history = NULL;
     }
