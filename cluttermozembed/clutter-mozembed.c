@@ -1069,6 +1069,13 @@ disconnect_poll_sources (ClutterMozEmbed *self)
     }
 }
 
+gboolean
+idle_monitor_unref_cb (gpointer data)
+{
+  g_object_unref (data);
+  return FALSE;
+}
+
 static void
 disconnect_file_monitor_sources (ClutterMozEmbed *self)
 {
@@ -1077,7 +1084,13 @@ disconnect_file_monitor_sources (ClutterMozEmbed *self)
   if (priv->monitor)
     {
       g_file_monitor_cancel (priv->monitor);
+#ifndef DISABLE_GFILEMONITOR_BUG_WORKAROUND
+      /* gio/gilemonitor.c:emit_cb does not cope if we dispose a monitor when
+       * there are multiple pending_file_changes. */
+      g_idle_add (idle_monitor_unref_cb, priv->monitor);
+#else
       g_object_unref (priv->monitor);
+#endif
       priv->monitor = NULL;
     }
 
