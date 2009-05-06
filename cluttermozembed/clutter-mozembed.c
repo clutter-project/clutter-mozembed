@@ -1383,6 +1383,14 @@ clutter_mozembed_allocate (ClutterActor          *actor,
       clutter_mozembed_sync_plugin_viewport_pos (mozembed);
       clutter_mozembed_allocate_plugins (mozembed, absolute_origin_changed);
     }
+  else
+    {
+      /* We want an actor-mapped signal, but until then, this is a
+       * hacky way of ensuring that we're on a stage.
+       */
+      if (!clutter_mozembed_init_viewport (mozembed))
+        g_warning ("Failed to initialise plugin window");
+    }
 #endif
 }
 
@@ -1393,7 +1401,6 @@ clutter_mozembed_paint (ClutterActor *actor)
   ClutterMozEmbedPrivate *priv = self->priv;
   ClutterGeometry geom;
 #ifdef SUPPORT_PLUGINS
-  static gboolean first_paint = TRUE;
   GList *pwin;
 #endif
 
@@ -1410,16 +1417,6 @@ clutter_mozembed_paint (ClutterActor *actor)
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->paint (actor);
 
 #ifdef SUPPORT_PLUGINS
-  if (first_paint)
-    {
-      /* We want an actor-mapped signal, but until then, this is a
-       * hacky way of ensuring that we're on a stage.
-       */
-      if (!clutter_mozembed_init_viewport (self))
-        g_warning ("Failed to initialise plugin window");
-      first_paint = FALSE;
-    }
-
   /* Paint plugin windows */
   cogl_clip_push (0, 0, geom.width, geom.height);
   for (pwin = priv->plugin_windows; pwin != NULL; pwin = pwin->next)
