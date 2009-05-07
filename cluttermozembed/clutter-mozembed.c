@@ -44,6 +44,8 @@ G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_TYPE_TEXTURE)
 #define MOZEMBED_PRIVATE(o) \
   (G_TYPE_INSTANCE_GET_PRIVATE ((o), CLUTTER_TYPE_MOZEMBED, ClutterMozEmbedPrivate))
 
+/* #define DEBUG_PLUGIN_VIEWPORT */
+
 enum
 {
   PROP_0,
@@ -648,9 +650,13 @@ find_plugin_window (GList *plugins, Window xwindow)
       PluginWindow *plugin_window = pwin->data;
       Window        plugin_xwindow;
 
+#ifndef DEBUG_PLUGIN_VIEWPORT
       g_object_get (G_OBJECT (plugin_window->plugin_tfp),
                     "window", &plugin_xwindow,
                     NULL);
+#else
+      return plugin_window;
+#endif
 
       if (plugin_xwindow == xwindow)
         return plugin_window;
@@ -691,7 +697,7 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
        * 50px vertical bar. */
       if (geom.width > 50 && geom.height > 0)
         {
-#if 1
+#ifndef DEBUG_PLUGIN_VIEWPORT
           XResizeWindow (xdpy, priv->plugin_viewport,
                          geom.width - 50, geom.height);
 #else /* XXX: Handy when disabling redirection of the viewport
@@ -751,6 +757,7 @@ plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
       plugin_window = g_slice_new (PluginWindow);
       plugin_window->x = attribs.x;
       plugin_window->y = attribs.y;
+#ifndef DEBUG_PLUGIN_VIEWPORT
       plugin_window->plugin_tfp =
         clutter_glx_texture_pixmap_new_with_window (xev->xmap.window);
 
@@ -764,6 +771,10 @@ plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
                     "window-redirect-automatic",
                     FALSE,
                     NULL);
+#else
+      plugin_window->plugin_tfp = clutter_rectangle_new ();
+      clutter_actor_set_size (plugin_window->plugin_tfp, 100, 100);
+#endif
 
       clutter_actor_set_parent (plugin_window->plugin_tfp,
                                 CLUTTER_ACTOR (mozembed));
@@ -830,6 +841,10 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
   if (!xdpy)
     return FALSE;
 
+#ifdef DEBUG_PLUGIN_VIEWPORT
+  XSynchronize (xdpy, True);
+#endif
+
   stage = clutter_actor_get_stage (CLUTTER_ACTOR (mozembed));
   if (!stage || !CLUTTER_ACTOR_IS_REALIZED (stage))
     return FALSE;
@@ -845,7 +860,7 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 
   /* XXX: If you uncomment the call to XCompositeRedirectWindow below this can
    * simply help identify the viewport window for different tabs... */
-#if 1
+#ifndef DEBUG_PLUGIN_VIEWPORT
   {
   static int color_toggle = 0;
   if (color_toggle)
@@ -869,6 +884,14 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
                          pixel, /* border color */
                          pixel); /* bg color */
 
+#ifdef DEBUG_PLUGIN_VIEWPORT
+  {
+  XSetWindowAttributes attribs;
+  attribs.background_pixel = 0xff0000;
+  XChangeWindowAttributes (xdpy, priv->plugin_viewport, CWBackPixel, &attribs);
+  }
+#endif
+
   /* Note, unlike the individual plugin windows which we redirect using clutter,
    * we redirect the viewport window directly since we want to be sure we never
    * name a pixmap for it. NB: The viewport window is only needed for input
@@ -880,7 +903,7 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
       g_critical ("The composite extension is required for redirecting "
                   "plugin windows");
     }
-#if 1
+#ifndef DEBUG_PLUGIN_VIEWPORT
   XCompositeRedirectWindow (xdpy,
                             priv->plugin_viewport,
                             CompositeRedirectManual);
