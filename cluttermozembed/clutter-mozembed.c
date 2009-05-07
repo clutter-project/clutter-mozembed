@@ -715,11 +715,14 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
     }
 }
 
-static ClutterX11FilterReturn
-plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
+static GdkFilterReturn
+plugin_viewport_x_event_filter (GdkXEvent *gdk_xevent,
+                                GdkEvent *event,
+                                gpointer data)
 {
   ClutterMozEmbed        *mozembed = CLUTTER_MOZEMBED (data);
   ClutterMozEmbedPrivate *priv = mozembed->priv;
+  XEvent                 *xev = (XEvent *)gdk_xevent;
   Display                *xdpy = clutter_x11_get_default_display ();
   PluginWindow           *plugin_window;
   XWindowAttributes       attribs;
@@ -810,7 +813,7 @@ plugin_viewport_x_event_filter (XEvent *xev, ClutterEvent *cev, gpointer data)
       break;
     }
 
-  return  CLUTTER_X11_FILTER_CONTINUE;
+  return  GDK_FILTER_CONTINUE;
 }
 
 static void
@@ -911,8 +914,9 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
   XSelectInput (xdpy, priv->plugin_viewport,
                 SubstructureNotifyMask);
 
-  clutter_x11_add_filter (plugin_viewport_x_event_filter,
-                          (gpointer)mozembed);
+  gdk_window_add_filter (NULL,
+                         plugin_viewport_x_event_filter,
+                         (gpointer)mozembed);
 
   XMapWindow (xdpy, priv->plugin_viewport);
 
@@ -1144,8 +1148,9 @@ clutter_mozembed_dispose (GObject *object)
       XWindowAttributes  attribs;
       Status             status;
 
-      clutter_x11_remove_filter (plugin_viewport_x_event_filter,
-                                 (gpointer)object);
+      gdk_window_remove_filter (NULL,
+                                plugin_viewport_x_event_filter,
+                                (gpointer)object);
 
       clutter_mozembed_trap_x_errors ();
       status  = XQueryTree (xdpy,
