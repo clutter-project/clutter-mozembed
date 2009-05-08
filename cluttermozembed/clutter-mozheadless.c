@@ -37,6 +37,7 @@
 
 #include "clutter-mozheadless.h"
 #include "clutter-mozheadless-history.h"
+#include "clutter-mozheadless-prefs.h"
 
 G_DEFINE_TYPE (ClutterMozHeadless, clutter_mozheadless, MOZ_TYPE_HEADLESS)
 
@@ -1151,7 +1152,7 @@ main (int argc, char **argv)
   /* Initialise mozilla */
   moz_headless_set_path (MOZHOME);
   clutter_mozheadless_history_init ();
-  //clutter_mozheadless_prefs_init ();
+  clutter_mozheadless_prefs_init ();
 
   moz_headless = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
                                "output", argv[1],
@@ -1164,7 +1165,7 @@ main (int argc, char **argv)
   g_main_loop_run (mainloop);
 
   clutter_mozheadless_history_deinit ();
-  //clutter_mozheadless_prefs_deinit ();
+  clutter_mozheadless_prefs_deinit ();
 
   return 0;
 }
