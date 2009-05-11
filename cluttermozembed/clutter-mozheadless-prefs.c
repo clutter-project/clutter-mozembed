@@ -20,7 +20,7 @@
 
 #include "clutter-mozheadless.h"
 #include "clutter-mozheadless-prefs.h"
-#include <places-glib/places-glib.h>
+#include <mhs/mhs.h>
 #include <nsError.h>
 
 static guint
@@ -32,10 +32,10 @@ clutter_mozheadless_prefs_read_user (const gchar *file,
   GError *error = NULL;
 
   g_debug ("ReadUserPrefs(%s)", file);
-  result = places_prefs_read_user ((PlacesPrefs *)user_data,
-                                   file,
-                                   &ns_result,
-                                   &error);
+  result = mhs_prefs_read_user ((MhsPrefs *)user_data,
+                                file,
+                                &ns_result,
+                                &error);
 
   if (!result)
     {
@@ -54,7 +54,7 @@ clutter_mozheadless_prefs_reset (gpointer user_data)
   GError *error = NULL;
 
   g_debug ("ResetPrefs");
-  result = places_prefs_reset ((PlacesPrefs *)user_data, &ns_result, &error);
+  result = mhs_prefs_reset ((MhsPrefs *)user_data, &ns_result, &error);
 
   if (!result)
     {
@@ -73,9 +73,9 @@ clutter_mozheadless_prefs_reset_user (gpointer user_data)
   GError *error = NULL;
 
   g_debug ("ResetUserPrefs");
-  result = places_prefs_reset_user ((PlacesPrefs *)user_data,
-                                    &ns_result,
-                                    &error);
+  result = mhs_prefs_reset_user ((MhsPrefs *)user_data,
+                                 &ns_result,
+                                 &error);
 
   if (!result)
     {
@@ -95,10 +95,10 @@ clutter_mozheadless_prefs_save_pref_file (const gchar *file,
   GError *error = NULL;
 
   g_debug ("SavePrefFile(%s)", file);
-  result = places_prefs_save_pref_file ((PlacesPrefs *)user_data,
-                                        file,
-                                        &ns_result,
-                                        &error);
+  result = mhs_prefs_save_pref_file ((MhsPrefs *)user_data,
+                                     file,
+                                     &ns_result,
+                                     &error);
 
   if (!result)
     {
@@ -119,11 +119,11 @@ clutter_mozheadless_prefs_get_branch (const gchar *root,
   GError *error = NULL;
 
   g_debug ("GetBranch(%s)", root);
-  result = places_prefs_get_branch ((PlacesPrefs *)user_data,
-                                    root,
-                                    id,
-                                    &ns_result,
-                                    &error);
+  result = mhs_prefs_get_branch ((MhsPrefs *)user_data,
+                                 root,
+                                 id,
+                                 &ns_result,
+                                 &error);
 
   if (!result)
     {
@@ -144,11 +144,11 @@ clutter_mozheadless_prefs_get_default_branch (const gchar *root,
   GError *error = NULL;
 
   g_debug ("GetDefaultBranch(%s)", root);
-  result = places_prefs_get_default_branch ((PlacesPrefs *)user_data,
-                                            root,
-                                            id,
-                                            &ns_result,
-                                            &error);
+  result = mhs_prefs_get_default_branch ((MhsPrefs *)user_data,
+                                         root,
+                                         id,
+                                         &ns_result,
+                                         &error);
 
   if (!result)
     {
@@ -167,10 +167,10 @@ clutter_mozheadless_prefs_release_branch (gint     id,
   gboolean result;
   GError *error = NULL;
 
-  result = places_prefs_release_branch ((PlacesPrefs *)user_data,
-                                        id,
-                                        &ns_result,
-                                        &error);
+  result = mhs_prefs_release_branch ((MhsPrefs *)user_data,
+                                     id,
+                                     &ns_result,
+                                     &error);
 
   if (!result)
     {
@@ -192,12 +192,12 @@ clutter_mozheadless_prefs_branch_get_type (gint         id,
   GError *error = NULL;
 
   g_debug ("GetType(%d, %s)", id, name);
-  result = places_prefs_branch_get_type ((PlacesPrefs *)user_data,
-                                         id,
-                                         name,
-                                         type,
-                                         &ns_result,
-                                         &error);
+  result = mhs_prefs_branch_get_type ((MhsPrefs *)user_data,
+                                      id,
+                                      name,
+                                      type,
+                                      &ns_result,
+                                      &error);
 
   if (!result)
     {
@@ -228,12 +228,12 @@ clutter_mozheadless_prefs_branch_has_user_value (gint         id,
   GError *error = NULL;
 
   g_debug ("HasUserValue(%d, %s)", id, name);
-  result = places_prefs_branch_has_user_value ((PlacesPrefs *)user_data,
-                                               id,
-                                               name,
-                                               has_value,
-                                               &ns_result,
-                                               &error);
+  result = mhs_prefs_branch_has_user_value ((MhsPrefs *)user_data,
+                                            id,
+                                            name,
+                                            has_value,
+                                            &ns_result,
+                                            &error);
 
   if (!result)
     {
@@ -276,13 +276,13 @@ clutter_mozheadless_prefs_branch_get_child_list (gint         id,
   g_debug ("GetChildList(%d, %s)", id, start);
   *len = 0;
   *array = NULL;
-  result = places_prefs_branch_get_child_list ((PlacesPrefs *)user_data,
-                                               id,
-                                               start,
-                                               len,
-                                               array,
-                                               &ns_result,
-                                               &error);
+  result = mhs_prefs_branch_get_child_list ((MhsPrefs *)user_data,
+                                            id,
+                                            start,
+                                            len,
+                                            array,
+                                            &ns_result,
+                                            &error);
 
   if (!result)
     {
@@ -303,11 +303,11 @@ clutter_mozheadless_prefs_branch_lock (gint         id,
   GError *error = NULL;
 
   g_debug ("Lock(%d, %s)", id, name);
-  result = places_prefs_branch_lock ((PlacesPrefs *)user_data,
-                                     id,
-                                     name,
-                                     &ns_result,
-                                     &error);
+  result = mhs_prefs_branch_lock ((MhsPrefs *)user_data,
+                                  id,
+                                  name,
+                                  &ns_result,
+                                  &error);
 
   if (!result)
     {
@@ -329,12 +329,12 @@ clutter_mozheadless_prefs_branch_is_locked (gint         id,
   GError *error = NULL;
 
   g_debug ("IsLocked(%d, %s)", id, name);
-  result = places_prefs_branch_is_locked ((PlacesPrefs *)user_data,
-                                          id,
-                                          name,
-                                          value,
-                                          &ns_result,
-                                          &error);
+  result = mhs_prefs_branch_is_locked ((MhsPrefs *)user_data,
+                                       id,
+                                       name,
+                                       value,
+                                       &ns_result,
+                                       &error);
 
   if (!result)
     {
@@ -355,11 +355,11 @@ clutter_mozheadless_prefs_branch_unlock (gint         id,
   GError *error = NULL;
 
   g_debug ("Unlock(%d, %s)", id, name);
-  result = places_prefs_branch_unlock ((PlacesPrefs *)user_data,
-                                       id,
-                                       name,
-                                       &ns_result,
-                                       &error);
+  result = mhs_prefs_branch_unlock ((MhsPrefs *)user_data,
+                                    id,
+                                    name,
+                                    &ns_result,
+                                    &error);
 
   if (!result)
     {
@@ -381,12 +381,12 @@ clutter_mozheadless_prefs_branch_get_bool (gint         id,
   GError *error = NULL;
 
   g_debug ("GetBool(%d, %s)", id, name);
-  result = places_prefs_branch_get_bool ((PlacesPrefs *)user_data,
-                                         id,
-                                         name,
-                                         value,
-                                         &ns_result,
-                                         &error);
+  result = mhs_prefs_branch_get_bool ((MhsPrefs *)user_data,
+                                      id,
+                                      name,
+                                      value,
+                                      &ns_result,
+                                      &error);
 
   if (!result)
     {
@@ -408,12 +408,12 @@ clutter_mozheadless_prefs_branch_set_bool (gint         id,
   GError *error = NULL;
 
   g_debug ("SetBool(%d, %s, %d)", id, name, value);
-  result = places_prefs_branch_set_bool ((PlacesPrefs *)user_data,
-                                         id,
-                                         name,
-                                         value,
-                                         &ns_result,
-                                         &error);
+  result = mhs_prefs_branch_set_bool ((MhsPrefs *)user_data,
+                                      id,
+                                      name,
+                                      value,
+                                      &ns_result,
+                                      &error);
 
   if (!result)
     {
@@ -435,12 +435,12 @@ clutter_mozheadless_prefs_branch_get_char (gint          id,
   GError *error = NULL;
 
   g_debug ("GetChar(%d, %s)", id, name);
-  result = places_prefs_branch_get_char ((PlacesPrefs *)user_data,
-                                         id,
-                                         name,
-                                         value,
-                                         &ns_result,
-                                         &error);
+  result = mhs_prefs_branch_get_char ((MhsPrefs *)user_data,
+                                      id,
+                                      name,
+                                      value,
+                                      &ns_result,
+                                      &error);
 
   if (!result)
     {
@@ -466,12 +466,12 @@ clutter_mozheadless_prefs_branch_set_char (gint         id,
   GError *error = NULL;
 
   g_debug ("SetChar(%d, %s, %s)", id, name, value);
-  result = places_prefs_branch_set_char ((PlacesPrefs *)user_data,
-                                         id,
-                                         name,
-                                         value,
-                                         &ns_result,
-                                         &error);
+  result = mhs_prefs_branch_set_char ((MhsPrefs *)user_data,
+                                      id,
+                                      name,
+                                      value,
+                                      &ns_result,
+                                      &error);
 
   if (!result)
     {
@@ -493,12 +493,12 @@ clutter_mozheadless_prefs_branch_get_int (gint         id,
   GError *error = NULL;
 
   g_debug ("GetInt(%d, %s)", id, name);
-  result = places_prefs_branch_get_int ((PlacesPrefs *)user_data,
-                                        id,
-                                        name,
-                                        value,
-                                        &ns_result,
-                                        &error);
+  result = mhs_prefs_branch_get_int ((MhsPrefs *)user_data,
+                                     id,
+                                     name,
+                                     value,
+                                     &ns_result,
+                                     &error);
 
   if (!result)
     {
@@ -520,12 +520,12 @@ clutter_mozheadless_prefs_branch_set_int (gint         id,
   GError *error = NULL;
 
   g_debug ("SetInt(%d, %s, %d)", id, name, value);
-  result = places_prefs_branch_set_int ((PlacesPrefs *)user_data,
-                                        id,
-                                        name,
-                                        value,
-                                        &ns_result,
-                                        &error);
+  result = mhs_prefs_branch_set_int ((MhsPrefs *)user_data,
+                                     id,
+                                     name,
+                                     value,
+                                     &ns_result,
+                                     &error);
 
   if (!result)
     {
@@ -536,13 +536,13 @@ clutter_mozheadless_prefs_branch_set_int (gint         id,
   return ns_result;
 }
 
-static PlacesPrefs *prefs = NULL;
+static MhsPrefs *prefs = NULL;
 
 void
 clutter_mozheadless_prefs_init ()
 {
   if (!prefs)
-    prefs = places_prefs_new ();
+    prefs = mhs_prefs_new ();
 
   if (prefs)
     {

@@ -20,7 +20,7 @@
 
 #include "clutter-mozheadless-history.h"
 #include <moz-headless.h>
-#include <places-glib/places-glib.h>
+#include <mhs/mhs.h>
 
 static void
 clutter_mozheadless_history_add_uri (const gchar *uri,
@@ -31,12 +31,12 @@ clutter_mozheadless_history_add_uri (const gchar *uri,
 {
   GError *error = NULL;
   gboolean result =
-    places_history_add_uri ((PlacesHistory *)user_data,
-                            uri,
-                            redirect,
-                            top_level,
-                            referrer,
-                            &error);
+    mhs_history_add_uri ((MhsHistory *)user_data,
+                         uri,
+                         redirect,
+                         top_level,
+                         referrer,
+                         &error);
   if (!result)
     {
       g_warning ("Error adding URI: %s", error->message);
@@ -50,10 +50,10 @@ clutter_mozheadless_history_is_visited (const gchar *uri, gpointer user_data)
   GError *error = NULL;
   gboolean is_visited = FALSE;
   gboolean result =
-    places_history_is_visited ((PlacesHistory *)user_data,
-                               uri,
-                               &is_visited,
-                               &error);
+    mhs_history_is_visited ((MhsHistory *)user_data,
+                            uri,
+                            &is_visited,
+                            &error);
   if (!result)
     {
       g_warning ("Error checking is-visited: %s", error->message);
@@ -70,10 +70,10 @@ clutter_mozheadless_history_set_page_title (const gchar *uri,
 {
   GError *error = NULL;
   gboolean result =
-    places_history_set_page_title ((PlacesHistory *)user_data,
-                                   uri,
-                                   title,
-                                   &error);
+    mhs_history_set_page_title ((MhsHistory *)user_data,
+                                uri,
+                                title,
+                                &error);
   if (!result)
     {
       g_warning ("Error setting page title: %s", error->message);
@@ -82,18 +82,18 @@ clutter_mozheadless_history_set_page_title (const gchar *uri,
 }
 
 static void
-_link_visited_cb (PlacesHistory *history, const gchar *uri)
+_link_visited_cb (MhsHistory *history, const gchar *uri)
 {
   moz_headless_history_send_link_visited (uri);
 }
 
-static PlacesHistory *history = NULL;
+static MhsHistory *history = NULL;
 
 void
 clutter_mozheadless_history_init ()
 {
   if (!history)
-    history = places_history_new ();
+    history = mhs_history_new ();
 
   if (history)
     {
