@@ -171,6 +171,9 @@ static void
 clutter_mozembed_allocate_plugins (ClutterMozEmbed *mozembed,
                                    gboolean         absolute_origin_changed);
 
+static gboolean
+clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed);
+
 static int trapped_x_error = 0;
 static int (*prev_error_handler) (Display *, XErrorEvent *);
 #endif
@@ -505,24 +508,27 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
-      
+
       new_window = g_object_new (CLUTTER_TYPE_MOZEMBED, "spawn", FALSE, NULL);
-      
+
       output_file = input_file = shm_name = NULL;
       g_object_get (G_OBJECT (new_window),
                     "output", &output_file,
                     "input", &input_file,
                     "shm", &shm_name,
                     NULL);
-      
+
       command = g_strdup_printf ("new-window-response %s %s %s",
                                  input_file, output_file, shm_name);
       send_command (self, command);
       g_free (command);
-      
+
       g_object_ref_sink (new_window);
       g_signal_emit (self, signals[NEW_WINDOW], 0,
                      new_window, (guint)atoi (params[0]));
+#ifdef SUPPORT_PLUGINS
+      clutter_mozembed_init_viewport (new_window);
+#endif
       g_object_unref (new_window);
     }
   else if (g_str_equal (command, "closed"))
@@ -921,6 +927,11 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 
   XMapWindow (xdpy, priv->plugin_viewport);
 
+  /* Make sure the window is mapped, or we can end up with unparented
+   * plugin windows
+   */
+  XSync (xdpy, False);
+
   clutter_mozembed_sync_plugin_viewport_pos (mozembed);
 
   g_signal_connect (G_OBJECT (mozembed),
@@ -1185,7 +1196,11 @@ clutter_mozembed_dispose (GObject *object)
                * interfere with input. */
               /* XXX: There is the potential for the plugin window to be
                * resized and become visible within the stage. */
-              XReparentWindow (xdpy, children[i], priv->stage_xwin, -width, -height);
+              XReparentWindow (xdpy,
+                               children[i],
+                               priv->stage_xwin,
+                               -width,
+                               -height);
 
               XSync (xdpy, False);
               clutter_mozembed_untrap_x_errors ();
