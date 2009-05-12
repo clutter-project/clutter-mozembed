@@ -31,7 +31,7 @@ clutter_mozheadless_prefs_read_user (const gchar *file,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("ReadUserPrefs(%s)", file);
+  // g_debug ("ReadUserPrefs(%s)", file);
   result = mhs_prefs_read_user ((MhsPrefs *)user_data,
                                 file,
                                 &ns_result,
@@ -53,7 +53,7 @@ clutter_mozheadless_prefs_reset (gpointer user_data)
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("ResetPrefs");
+  // g_debug ("ResetPrefs");
   result = mhs_prefs_reset ((MhsPrefs *)user_data, &ns_result, &error);
 
   if (!result)
@@ -72,7 +72,7 @@ clutter_mozheadless_prefs_reset_user (gpointer user_data)
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("ResetUserPrefs");
+  // g_debug ("ResetUserPrefs");
   result = mhs_prefs_reset_user ((MhsPrefs *)user_data,
                                  &ns_result,
                                  &error);
@@ -94,7 +94,7 @@ clutter_mozheadless_prefs_save_pref_file (const gchar *file,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("SavePrefFile(%s)", file);
+  // g_debug ("SavePrefFile(%s)", file);
   result = mhs_prefs_save_pref_file ((MhsPrefs *)user_data,
                                      file,
                                      &ns_result,
@@ -118,7 +118,7 @@ clutter_mozheadless_prefs_get_branch (const gchar *root,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("GetBranch(%s)", root);
+  // g_debug ("GetBranch(%s)", root);
   result = mhs_prefs_get_branch ((MhsPrefs *)user_data,
                                  root,
                                  id,
@@ -143,7 +143,7 @@ clutter_mozheadless_prefs_get_default_branch (const gchar *root,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("GetDefaultBranch(%s)", root);
+  // g_debug ("GetDefaultBranch(%s)", root);
   result = mhs_prefs_get_default_branch ((MhsPrefs *)user_data,
                                          root,
                                          id,
@@ -191,7 +191,7 @@ clutter_mozheadless_prefs_branch_get_type (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("GetType(%d, %s)", id, name);
+  // g_debug ("GetType(%d, %s)", id, name);
   result = mhs_prefs_branch_get_type ((MhsPrefs *)user_data,
                                       id,
                                       name,
@@ -213,7 +213,7 @@ clutter_mozheadless_prefs_branch_clear_user (gint         id,
                                              const gchar *name,
                                              gpointer     user_data)
 {
-  g_debug ("ClearUser(%d, %s)", id, name);
+  // g_debug ("ClearUser(%d, %s)", id, name);
   return 0;
 }
 
@@ -227,7 +227,7 @@ clutter_mozheadless_prefs_branch_has_user_value (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("HasUserValue(%d, %s)", id, name);
+  // g_debug ("HasUserValue(%d, %s)", id, name);
   result = mhs_prefs_branch_has_user_value ((MhsPrefs *)user_data,
                                             id,
                                             name,
@@ -249,7 +249,7 @@ clutter_mozheadless_prefs_branch_delete (gint         id,
                                          const gchar *start,
                                          gpointer     user_data)
 {
-  g_debug ("Delete(%d, %s)", id, start);
+  // g_debug ("Delete(%d, %s)", id, start);
   return (guint)0;
 }
 
@@ -258,7 +258,7 @@ clutter_mozheadless_prefs_branch_reset (gint         id,
                                         const gchar *start,
                                         gpointer     user_data)
 {
-  g_debug ("Reset(%d, %s)", id, start);
+  // g_debug ("Reset(%d, %s)", id, start);
   return (guint)0;
 }
 
@@ -273,7 +273,7 @@ clutter_mozheadless_prefs_branch_get_child_list (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("GetChildList(%d, %s)", id, start);
+  // g_debug ("GetChildList(%d, %s)", id, start);
   *len = 0;
   *array = NULL;
   result = mhs_prefs_branch_get_child_list ((MhsPrefs *)user_data,
@@ -302,7 +302,7 @@ clutter_mozheadless_prefs_branch_lock (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("Lock(%d, %s)", id, name);
+  // g_debug ("Lock(%d, %s)", id, name);
   result = mhs_prefs_branch_lock ((MhsPrefs *)user_data,
                                   id,
                                   name,
@@ -328,7 +328,7 @@ clutter_mozheadless_prefs_branch_is_locked (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("IsLocked(%d, %s)", id, name);
+  // g_debug ("IsLocked(%d, %s)", id, name);
   result = mhs_prefs_branch_is_locked ((MhsPrefs *)user_data,
                                        id,
                                        name,
@@ -354,7 +354,7 @@ clutter_mozheadless_prefs_branch_unlock (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("Unlock(%d, %s)", id, name);
+  // g_debug ("Unlock(%d, %s)", id, name);
   result = mhs_prefs_branch_unlock ((MhsPrefs *)user_data,
                                     id,
                                     name,
@@ -380,7 +380,7 @@ clutter_mozheadless_prefs_branch_get_bool (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("GetBool(%d, %s)", id, name);
+  // g_debug ("GetBool(%d, %s)", id, name);
   result = mhs_prefs_branch_get_bool ((MhsPrefs *)user_data,
                                       id,
                                       name,
@@ -407,7 +407,7 @@ clutter_mozheadless_prefs_branch_set_bool (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("SetBool(%d, %s, %d)", id, name, value);
+  // g_debug ("SetBool(%d, %s, %d)", id, name, value);
   result = mhs_prefs_branch_set_bool ((MhsPrefs *)user_data,
                                       id,
                                       name,
@@ -434,7 +434,7 @@ clutter_mozheadless_prefs_branch_get_char (gint          id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("GetChar(%d, %s)", id, name);
+  // g_debug ("GetChar(%d, %s)", id, name);
   result = mhs_prefs_branch_get_char ((MhsPrefs *)user_data,
                                       id,
                                       name,
@@ -446,10 +446,6 @@ clutter_mozheadless_prefs_branch_get_char (gint          id,
     {
       g_warning ("Error getting branch char value: %s", error->message);
       g_error_free (error);
-    }
-  else
-    {
-      g_debug ("Got char value: %s", *value);
     }
 
   return ns_result;
@@ -465,7 +461,7 @@ clutter_mozheadless_prefs_branch_set_char (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("SetChar(%d, %s, %s)", id, name, value);
+  // g_debug ("SetChar(%d, %s, %s)", id, name, value);
   result = mhs_prefs_branch_set_char ((MhsPrefs *)user_data,
                                       id,
                                       name,
@@ -492,7 +488,7 @@ clutter_mozheadless_prefs_branch_get_int (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("GetInt(%d, %s)", id, name);
+  // g_debug ("GetInt(%d, %s)", id, name);
   result = mhs_prefs_branch_get_int ((MhsPrefs *)user_data,
                                      id,
                                      name,
@@ -519,7 +515,7 @@ clutter_mozheadless_prefs_branch_set_int (gint         id,
   gboolean result;
   GError *error = NULL;
 
-  g_debug ("SetInt(%d, %s, %d)", id, name, value);
+  // g_debug ("SetInt(%d, %s, %d)", id, name, value);
   result = mhs_prefs_branch_set_int ((MhsPrefs *)user_data,
                                      id,
                                      name,
@@ -534,6 +530,63 @@ clutter_mozheadless_prefs_branch_set_int (gint         id,
     }
 
   return ns_result;
+}
+
+static guint
+clutter_mozheadless_prefs_branch_add_observer (guint        id,
+                                               const gchar *domain,
+                                               gpointer     user_data)
+{
+  guint ns_result = NS_ERROR_UNEXPECTED;
+  gboolean result;
+  GError *error = NULL;
+
+  // g_debug ("AddObserver(%d, %s)", id, domain);
+  result = mhs_prefs_branch_add_observer ((MhsPrefs *)user_data,
+                                          id,
+                                          domain,
+                                          &ns_result,
+                                          &error);
+
+  if (!result)
+    {
+      g_warning ("Error adding observer: %s", error->message);
+      g_error_free (error);
+    }
+
+  return ns_result;
+}
+
+static guint
+clutter_mozheadless_prefs_branch_remove_observer (guint        id,
+                                                  const gchar *domain,
+                                                  gpointer     user_data)
+{
+  guint ns_result = NS_ERROR_UNEXPECTED;
+  gboolean result;
+  GError *error = NULL;
+
+  // g_debug ("RemoveObserver(%d, %s)", id, domain);
+  result = mhs_prefs_branch_add_observer ((MhsPrefs *)user_data,
+                                          id,
+                                          domain,
+                                          &ns_result,
+                                          &error);
+
+  if (!result)
+    {
+      g_warning ("Error removing observer: %s", error->message);
+      g_error_free (error);
+    }
+
+  return ns_result;
+}
+
+static void
+_branch_changed_cb (MhsPrefs *prefs, gint id, const gchar *domain)
+{
+  // g_debug ("BranchChanged(%d, %s)", id, domain);
+  moz_headless_prefs_branch_send_change (id, domain);
 }
 
 static MhsPrefs *prefs = NULL;
@@ -581,6 +634,13 @@ clutter_mozheadless_prefs_init ()
       moz_headless_set_prefs_branch_int_callbacks (
         clutter_mozheadless_prefs_branch_get_int,
         clutter_mozheadless_prefs_branch_set_int);
+
+      moz_headless_set_prefs_branch_observer_callbacks (
+        clutter_mozheadless_prefs_branch_add_observer,
+        clutter_mozheadless_prefs_branch_remove_observer);
+
+      g_signal_connect (prefs, "branch-changed",
+                        G_CALLBACK (_branch_changed_cb), NULL);
     }
 }
 
@@ -589,6 +649,7 @@ clutter_mozheadless_prefs_deinit ()
 {
   if (prefs)
     {
+      g_signal_handlers_disconnect_by_func (prefs, _branch_changed_cb, NULL);
       g_object_unref (G_OBJECT (prefs));
       prefs = NULL;
     }
