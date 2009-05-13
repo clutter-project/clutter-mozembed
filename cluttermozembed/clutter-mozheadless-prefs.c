@@ -533,7 +533,7 @@ clutter_mozheadless_prefs_branch_set_int (gint         id,
 }
 
 static guint
-clutter_mozheadless_prefs_branch_add_observer (guint        id,
+clutter_mozheadless_prefs_branch_add_observer (gint         id,
                                                const gchar *domain,
                                                gpointer     user_data)
 {
@@ -558,7 +558,7 @@ clutter_mozheadless_prefs_branch_add_observer (guint        id,
 }
 
 static guint
-clutter_mozheadless_prefs_branch_remove_observer (guint        id,
+clutter_mozheadless_prefs_branch_remove_observer (gint         id,
                                                   const gchar *domain,
                                                   gpointer     user_data)
 {
@@ -567,11 +567,11 @@ clutter_mozheadless_prefs_branch_remove_observer (guint        id,
   GError *error = NULL;
 
   // g_debug ("RemoveObserver(%d, %s)", id, domain);
-  result = mhs_prefs_branch_add_observer ((MhsPrefs *)user_data,
-                                          id,
-                                          domain,
-                                          &ns_result,
-                                          &error);
+  result = mhs_prefs_branch_remove_observer ((MhsPrefs *)user_data,
+                                             id,
+                                             domain,
+                                             &ns_result,
+                                             &error);
 
   if (!result)
     {

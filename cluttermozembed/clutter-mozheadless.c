@@ -784,7 +784,7 @@ disconnect_view (ClutterMozHeadlessView *view)
           g_warning ("Error closing input channel: %s", error->message);
           g_error_free (error);
         }
-      
+
       g_io_channel_unref (view->input);
       view->input = NULL;
     }
@@ -800,12 +800,12 @@ disconnect_view (ClutterMozHeadlessView *view)
           g_warning ("Error closing output channel: %s", error->message);
           g_error_free (error);
         }
-      
+
       g_io_channel_unref (view->output);
       view->output = NULL;
     }
   g_remove (view->output_file);
-  
+
   g_free (view->output_file);
   g_free (view->input_file);
   g_free (view);
@@ -846,13 +846,14 @@ input_io_func (GIOChannel              *source,
             current_length += strlen (&buf[current_length]) + 1;
             process_command (view, command);
           }
+        return TRUE;
       } else if (status == G_IO_STATUS_ERROR) {
         g_warning ("Error reading from source: %s", error->message);
         g_error_free (error);
         break;
       } else if (status == G_IO_STATUS_EOF)
         break;
-      return TRUE;
+      break;
 
     case G_IO_ERR :
       g_warning ("Error");
