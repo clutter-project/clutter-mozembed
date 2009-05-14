@@ -276,15 +276,17 @@ new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
                                 "shm", priv->new_shm_name,
                                 NULL);
       moz_headless_set_chrome_mask (*newEmbed, chromemask);
+
+      g_free (priv->new_input_file);
+      g_free (priv->new_output_file);
+      g_free (priv->new_shm_name);
+
+      priv->new_input_file = NULL;
+      priv->new_output_file = NULL;
+      priv->new_shm_name = NULL;
     }
-
-  g_free (priv->new_input_file);
-  g_free (priv->new_output_file);
-  g_free (priv->new_shm_name);
-
-  priv->new_input_file = NULL;
-  priv->new_output_file = NULL;
-  priv->new_shm_name = NULL;
+  else
+    *newEmbed = NULL;
 }
 
 static void
@@ -712,8 +714,16 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
       gchar *params[3];
 
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-      
+        {
+          g_free (priv->new_input_file);
+          priv->new_input_file = NULL;
+          g_free (priv->new_output_file);
+          priv->new_output_file = NULL;
+          g_free (priv->new_shm_name);
+          priv->new_shm_name = NULL;
+          return;
+        }
+
       if (g_str_equal (command, "new-window"))
         {
           g_object_new (CLUTTER_TYPE_MOZHEADLESS,
@@ -826,7 +836,7 @@ input_io_func (GIOChannel              *source,
   GError *error = NULL;
   ClutterMozHeadless *moz_headless = view->parent;
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
-  
+
   switch (condition) {
     case G_IO_IN :
       /* We've received a connection, remove the disconnect timeout */
@@ -851,28 +861,33 @@ input_io_func (GIOChannel              *source,
         g_warning ("Error reading from source: %s", error->message);
         g_error_free (error);
         break;
-      } else if (status == G_IO_STATUS_EOF)
-        break;
+      } else if (status == G_IO_STATUS_EOF) {
+        g_warning ("End of file");
+      } else if (status == G_IO_STATUS_AGAIN) {
+        return TRUE;
+      } else {
+        g_warning ("Unknown condition");
+      }
       break;
 
     case G_IO_ERR :
       g_warning ("Error");
       break;
-    
+
     case G_IO_NVAL :
       g_warning ("Invalid request");
       break;
-    
+
     case G_IO_HUP :
       /* Don't warn on this, this is fine */
       /*g_warning ("Hung up");*/
       break;
-    
+
     default :
       g_warning ("Unhandled IO condition");
       break;
   }
-  
+
   /* Kill this head or disconnect the view */
   if ((priv->views) && (view == priv->views->data))
     g_object_unref (moz_headless);

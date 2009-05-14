@@ -502,7 +502,6 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
     }
   else if (g_str_equal (command, "new-window?"))
     {
-      gchar *output_file, *input_file, *shm_name, *command;
       ClutterMozEmbed *new_window;
       gchar *params[1];
 
@@ -511,25 +510,37 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
       new_window = g_object_new (CLUTTER_TYPE_MOZEMBED, "spawn", FALSE, NULL);
 
-      output_file = input_file = shm_name = NULL;
-      g_object_get (G_OBJECT (new_window),
-                    "output", &output_file,
-                    "input", &input_file,
-                    "shm", &shm_name,
-                    NULL);
-
-      command = g_strdup_printf ("new-window-response %s %s %s",
-                                 input_file, output_file, shm_name);
-      send_command (self, command);
-      g_free (command);
-
+      /* Find out if the new window is received */
       g_object_ref_sink (new_window);
+      g_object_add_weak_pointer (G_OBJECT (new_window), &new_window);
       g_signal_emit (self, signals[NEW_WINDOW], 0,
                      new_window, (guint)atoi (params[0]));
 #ifdef SUPPORT_PLUGINS
       clutter_mozembed_init_viewport (new_window);
 #endif
       g_object_unref (new_window);
+
+      /* If it is, send its details to the backend */
+      if (new_window)
+        {
+          gchar *output_file, *input_file, *shm_name, *command;
+
+          g_object_remove_weak_pointer (G_OBJECT (new_window), &new_window);
+
+          output_file = input_file = shm_name = NULL;
+          g_object_get (G_OBJECT (new_window),
+                        "output", &output_file,
+                        "input", &input_file,
+                        "shm", &shm_name,
+                        NULL);
+
+          command = g_strdup_printf ("new-window-response %s %s %s",
+                                     input_file, output_file, shm_name);
+          send_command (self, command);
+          g_free (command);
+        }
+      else
+        send_command (self, "new-window-response");
     }
   else if (g_str_equal (command, "closed"))
     {
