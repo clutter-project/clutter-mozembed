@@ -512,7 +512,7 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
       /* Find out if the new window is received */
       g_object_ref_sink (new_window);
-      g_object_add_weak_pointer (G_OBJECT (new_window), &new_window);
+      g_object_add_weak_pointer (G_OBJECT (new_window), (gpointer)&new_window);
       g_signal_emit (self, signals[NEW_WINDOW], 0,
                      new_window, (guint)atoi (params[0]));
 #ifdef SUPPORT_PLUGINS
@@ -525,7 +525,8 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
         {
           gchar *output_file, *input_file, *shm_name, *command;
 
-          g_object_remove_weak_pointer (G_OBJECT (new_window), &new_window);
+          g_object_remove_weak_pointer (G_OBJECT (new_window),
+                                        (gpointer)&new_window);
 
           output_file = input_file = shm_name = NULL;
           g_object_get (G_OBJECT (new_window),
@@ -574,11 +575,11 @@ input_io_func (GIOChannel      *source,
 
   GError *error = NULL;
   GIOStatus status;
-  
+
   switch (condition) {
     case G_IO_PRI :
     case G_IO_IN :
-      
+
       status = g_io_channel_read_chars (source, buf, sizeof (buf), &length,
                                         &error);
       if (status == G_IO_STATUS_NORMAL) {
@@ -595,6 +596,8 @@ input_io_func (GIOChannel      *source,
         g_error_free (error);
       } else if (status == G_IO_STATUS_EOF) {
         g_warning ("Reached end of input pipe");
+      } else if (status == G_IO_STATUS_AGAIN) {
+        return TRUE;
       }
       break;
 
@@ -602,18 +605,18 @@ input_io_func (GIOChannel      *source,
     case G_IO_NVAL :
       g_warning ("Error or invalid request");
       break;
-    
+
     case G_IO_HUP :
       g_warning ("Unexpected hang-up");
       break;
-    
+
     default :
       g_warning ("Unhandled IO condition");
       break;
   }
 
   g_signal_emit (self, signals[CRASHED], 0);
-  
+
   return FALSE;
 }
 
