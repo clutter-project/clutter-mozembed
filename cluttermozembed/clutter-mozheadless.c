@@ -428,7 +428,10 @@ separate_strings (gchar **strings, gint n_strings, gchar *string)
 {
   gint i;
   gboolean success = TRUE;
-  
+
+  if (!string)
+    return FALSE;
+
   strings[0] = string;
   for (i = 0; i < n_strings - 1; i++)
     {
@@ -441,7 +444,7 @@ separate_strings (gchar **strings, gint n_strings, gchar *string)
       string[0] = '\0';
       strings[i+1] = string + 1;
     }
-  
+
   return success;
 }
 
