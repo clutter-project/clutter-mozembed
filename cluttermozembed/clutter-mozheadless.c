@@ -39,6 +39,8 @@
 #include "clutter-mozheadless-history.h"
 #include "clutter-mozheadless-prefs.h"
 
+#include <nsAppDirectoryServiceDefs.h>
+
 G_DEFINE_TYPE (ClutterMozHeadless, clutter_mozheadless, MOZ_TYPE_HEADLESS)
 
 #define MOZHEADLESS_PRIVATE(o) \
@@ -1164,9 +1166,10 @@ main (int argc, char **argv)
     }
 
   g_type_init ();
-  
+
   /* Initialise mozilla */
   moz_headless_set_path (MOZHOME);
+  moz_headless_set_comp_path (PKGDATADIR);
   clutter_mozheadless_history_init ();
   clutter_mozheadless_prefs_init ();
 

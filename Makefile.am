@@ -1,1 +1,1 @@
-SUBDIRS=cluttermozembed tests
+SUBDIRS=cluttermozembed data tests

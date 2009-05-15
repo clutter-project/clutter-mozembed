@@ -37,5 +37,6 @@ AC_OUTPUT([
 Makefile
 cluttermozembed/Makefile
 cluttermozembed/cluttermozembed.pc
+data/Makefile
 tests/Makefile
 ])
