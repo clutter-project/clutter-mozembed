@@ -78,7 +78,8 @@ enum
   NEW_WINDOW,
   CLOSED,
   LINK_MESSAGE,
-  
+  SIZE_REQUEST,
+
   LAST_SIGNAL
 };
 
@@ -552,6 +553,16 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
   else if (g_str_equal (command, "link"))
     {
       g_signal_emit (self, signals[LINK_MESSAGE], 0, detail);
+    }
+  else if (g_str_equal (command, "size-request"))
+    {
+      gchar *params[2];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      g_signal_emit (self, signals[SIZE_REQUEST], 0,
+                     atoi (params[0]), atoi (params[1]));
     }
   else if (g_str_equal (command, "shm-name"))
     {
@@ -2492,6 +2503,15 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   NULL, NULL,
                   g_cclosure_marshal_VOID__STRING,
                   G_TYPE_NONE, 1, G_TYPE_STRING);
+
+  signals[SIZE_REQUEST] =
+    g_signal_new ("size-request",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, size_request),
+                  NULL, NULL,
+                  _clutter_mozembed_marshal_VOID__INT_INT,
+                  G_TYPE_NONE, 2, G_TYPE_INT, G_TYPE_INT);
 }
 
 static void

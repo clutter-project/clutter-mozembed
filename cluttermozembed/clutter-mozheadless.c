@@ -330,6 +330,23 @@ can_go_forward_cb (ClutterMozHeadless *self, gboolean can_go_forward)
 }
 
 static void
+size_to_cb (ClutterMozHeadless *self, gint width, gint height)
+{
+  gchar *feedback;
+  ClutterMozHeadlessView *primary_view;
+
+  ClutterMozHeadlessPrivate *priv = self->priv;
+
+  if (!priv->views)
+    return;
+
+  primary_view = (ClutterMozHeadlessView *)priv->views->data;
+  feedback = g_strdup_printf ("size-request %d %d", width, height);
+  send_feedback (primary_view, feedback);
+  g_free (feedback);
+}
+
+static void
 file_changed_cb (GFileMonitor           *monitor,
                  GFile                  *file,
                  GFile                  *other_file,
@@ -1062,6 +1079,8 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (can_go_back_cb), NULL);
   g_signal_connect (object, "can-go-forward",
                     G_CALLBACK (can_go_forward_cb), NULL);
+  g_signal_connect (object, "size-to",
+                    G_CALLBACK (size_to_cb), NULL);
 
   spawned_heads ++;
 
