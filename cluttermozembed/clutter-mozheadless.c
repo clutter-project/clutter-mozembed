@@ -406,6 +406,18 @@ file_changed_cb (GFileMonitor           *monitor,
 }
 
 static void
+cursor_changed_cb (MozHeadlessCursorType type,
+                   MozHeadlessCursor *special,
+                   gpointer data)
+{
+  ClutterMozHeadless *mozheadless = data;
+  /* TODO - support special cursors */
+  char *feedback = g_strdup_printf ("cursor %d", type);
+  send_feedback_all (mozheadless, feedback);
+  g_free (feedback);
+}
+
+static void
 clutter_mozheadless_create_view (ClutterMozHeadless *self,
                                  gchar              *input_file,
                                  gchar              *output_file)
@@ -1200,6 +1212,9 @@ main (int argc, char **argv)
                                "input", argv[2],
                                "shm", argv[3],
                                NULL);
+
+  moz_headless_set_change_cursor_callback (cursor_changed_cb,
+                                           moz_headless);
 
   /* Begin */
   mainloop = g_main_loop_new (NULL, FALSE);

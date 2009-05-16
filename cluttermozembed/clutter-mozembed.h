@@ -23,6 +23,7 @@
 
 #include <glib-object.h>
 #include <clutter/clutter.h>
+#include <moz-headless.h>
 
 G_BEGIN_DECLS
 
@@ -100,6 +101,8 @@ void clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy);
 
 gboolean clutter_mozembed_is_loading (ClutterMozEmbed *mozembed);
 gdouble clutter_mozembed_get_progress (ClutterMozEmbed *mozembed);
+
+MozHeadlessCursorType clutter_mozembed_get_cursor (ClutterMozEmbed *mozembed);
 
 G_END_DECLS
 

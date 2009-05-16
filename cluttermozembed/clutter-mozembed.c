@@ -67,6 +67,7 @@ enum
   PROP_CONNECT_TIMEOUT,
   PROP_CAN_GO_BACK,
   PROP_CAN_GO_FORWARD,
+  PROP_CURSOR
 };
 
 enum
@@ -155,6 +156,8 @@ struct _ClutterMozEmbedPrivate
   gboolean         pending_open;
   gchar           *pending_url;
 #endif
+
+  MozHeadlessCursorType cursor;
 };
 
 static void clutter_mozembed_open_pipes (ClutterMozEmbed *self);
@@ -568,6 +571,19 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
     {
       g_free (priv->shm_name);
       priv->shm_name = g_strdup (detail);
+    }
+  else if (g_str_equal (command, "cursor"))
+    {
+      gchar *params[1];
+      int cursor;
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      cursor = atoi (params[0]);
+
+      priv->cursor = cursor;
+      g_object_notify (G_OBJECT (self), "cursor");
     }
   else
     {
@@ -1055,6 +1071,10 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_boolean (value, self->priv->can_go_forward);
     break;
 
+  case PROP_CURSOR :
+    g_value_set_uint (value, self->priv->cursor);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -1108,6 +1128,10 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
 
   case PROP_CONNECT_TIMEOUT :
     priv->connect_timeout = g_value_get_uint (value);
+    break;
+
+  case PROP_CURSOR :
+    priv->cursor = g_value_get_uint (value);
     break;
 
   default:
@@ -2441,6 +2465,17 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                          G_PARAM_STATIC_NICK |
                                                          G_PARAM_STATIC_BLURB));
 
+  g_object_class_install_property (object_class,
+                                   PROP_CURSOR,
+                                   g_param_spec_uint ("cursor",
+                                                      "Cursor",
+                                                      "Cursor type",
+                                                      0, G_MAXINT, 0,
+                                                      G_PARAM_READABLE |
+                                                      G_PARAM_STATIC_NAME |
+                                                      G_PARAM_STATIC_NICK |
+                                                      G_PARAM_STATIC_BLURB));
+
   signals[PROGRESS] =
     g_signal_new ("progress",
                   G_TYPE_FROM_CLASS (klass),
@@ -2737,3 +2772,8 @@ clutter_mozembed_get_progress (ClutterMozEmbed *mozembed)
   return priv->progress;
 }
 
+MozHeadlessCursorType
+clutter_mozembed_get_cursor (ClutterMozEmbed *mozembed)
+{
+  return mozembed->priv->cursor;
+}
