@@ -273,6 +273,7 @@ new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
   if (priv->new_input_file && priv->new_output_file && priv->new_shm_name)
     {
       *newEmbed = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
+                                "chromeflags", chromemask,
                                 "output", priv->new_output_file,
                                 "input", priv->new_input_file,
                                 "shm", priv->new_shm_name,
@@ -1052,9 +1053,12 @@ clutter_mozheadless_constructed (GObject *object)
 {
   ClutterMozHeadless *self = CLUTTER_MOZHEADLESS (object);
   ClutterMozHeadlessPrivate *priv = self->priv;
-  
+
+  if (G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed)
+    G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed (object);
+
   clutter_mozheadless_create_view (self, priv->input_file, priv->output_file);
-  
+
   if (!priv->shm_name)
     {
       priv->shm_name = g_strdup_printf ("/mozheadless-%d-%d",
@@ -1064,7 +1068,7 @@ clutter_mozheadless_constructed (GObject *object)
   priv->shm_fd = shm_open (priv->shm_name, O_CREAT | O_RDWR | O_TRUNC, 0666);
   if (priv->shm_fd == -1)
     g_error ("Error opening shared memory");
-  
+
   g_signal_connect (object, "location",
                     G_CALLBACK (location_cb), NULL);
   g_signal_connect (object, "title",
