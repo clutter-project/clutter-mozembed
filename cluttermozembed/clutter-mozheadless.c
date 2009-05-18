@@ -1204,6 +1204,9 @@ main (int argc, char **argv)
   /* Initialise mozilla */
   moz_headless_set_path (MOZHOME);
   moz_headless_set_comp_path (PKGDATADIR);
+  moz_headless_set_directory (NS_APP_USER_MIMETYPES_50_FILE,
+                              PKGDATADIR "/mimeTypes.rdf");
+
   clutter_mozheadless_history_init ();
   clutter_mozheadless_prefs_init ();
 

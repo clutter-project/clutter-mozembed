@@ -127,7 +127,7 @@ clutter_mozheadless_prefs_get_branch (const gchar *root,
 
   if (!result)
     {
-      g_warning ("Error getting branch: %s", error->message);
+      /*g_warning ("Error getting branch: %s", error->message);*/
       g_error_free (error);
     }
 
@@ -201,7 +201,7 @@ clutter_mozheadless_prefs_branch_get_type (gint         id,
 
   if (!result)
     {
-      g_warning ("Error getting branch type: %s", error->message);
+      /*g_warning ("Error getting branch type: %s", error->message);*/
       g_error_free (error);
     }
 
@@ -237,7 +237,8 @@ clutter_mozheadless_prefs_branch_has_user_value (gint         id,
 
   if (!result)
     {
-      g_warning ("Error getting branch has-user-value: %s", error->message);
+      g_warning ("Error getting branch has-user-value (%s): %s",
+                 name, error->message);
       g_error_free (error);
     }
 
@@ -390,7 +391,8 @@ clutter_mozheadless_prefs_branch_get_bool (gint         id,
 
   if (!result)
     {
-      g_warning ("Error getting branch boolean value: %s", error->message);
+      /*g_warning ("Error getting branch boolean value (%s): %s",
+                 name, error->message);*/
       g_error_free (error);
     }
 
@@ -417,7 +419,8 @@ clutter_mozheadless_prefs_branch_set_bool (gint         id,
 
   if (!result)
     {
-      g_warning ("Error setting branch boolean value: %s", error->message);
+      g_warning ("Error setting branch boolean value (%s): %s",
+                 name, error->message);
       g_error_free (error);
     }
 
@@ -444,7 +447,8 @@ clutter_mozheadless_prefs_branch_get_char (gint          id,
 
   if (!result)
     {
-      g_warning ("Error getting branch char value: %s", error->message);
+      /*g_warning ("Error getting branch char value (%s): %s",
+                 name, error->message);*/
       g_error_free (error);
     }
 
@@ -471,7 +475,8 @@ clutter_mozheadless_prefs_branch_set_char (gint         id,
 
   if (!result)
     {
-      g_warning ("Error setting branch char value: %s", error->message);
+      g_warning ("Error setting branch char value (%s): %s",
+                 name, error->message);
       g_error_free (error);
     }
 
@@ -498,7 +503,8 @@ clutter_mozheadless_prefs_branch_get_int (gint         id,
 
   if (!result)
     {
-      g_warning ("Error getting branch int value: %s", error->message);
+      /*g_warning ("Error getting branch int value (%s): %s",
+                 name, error->message);*/
       g_error_free (error);
     }
 
@@ -525,7 +531,8 @@ clutter_mozheadless_prefs_branch_set_int (gint         id,
 
   if (!result)
     {
-      g_warning ("Error setting branch int value: %s", error->message);
+      g_warning ("Error setting branch int value (%s): %s",
+                 name, error->message);
       g_error_free (error);
     }
 
@@ -591,6 +598,88 @@ _branch_changed_cb (MhsPrefs *prefs, gint id, const gchar *domain)
 
 static MhsPrefs *prefs = NULL;
 
+static void
+_init_bool_pref (const gchar *pref, gboolean value)
+{
+  gboolean result, has_pref;
+  guint ns_result;
+  GError *error = NULL;
+
+  has_pref = TRUE;
+  mhs_prefs_branch_has_user_value (prefs, 0, pref,
+                                   &has_pref, &ns_result, &error);
+  g_clear_error (&error);
+
+  if (!has_pref)
+    {
+      result = mhs_prefs_branch_set_bool (prefs, 0,
+                                          pref,
+                                          value,
+                                          &ns_result,
+                                          &error);
+      if (!result)
+        {
+          g_warning ("Error initialising preference (%s): %s",
+                     pref, error->message);
+          g_error_free (error);
+        }
+    }
+}
+
+static void
+_init_int_pref (const gchar *pref, gint value)
+{
+  gboolean result, has_pref;
+  guint ns_result;
+  GError *error = NULL;
+
+  has_pref = TRUE;
+  mhs_prefs_branch_has_user_value (prefs, 0, pref,
+                                   &has_pref, &ns_result, &error);
+  g_clear_error (&error);
+
+  if (!has_pref)
+    {
+      result = mhs_prefs_branch_set_int (prefs, 0,
+                                         pref,
+                                         value,
+                                         &ns_result,
+                                         &error);
+      if (!result)
+        {
+          g_warning ("Error initialising preference (%s): %s",
+                     pref, error->message);
+          g_error_free (error);
+        }
+    }
+}
+
+static void
+_init_default_prefs ()
+{
+  /* These preferences need to be set for download dialogs to work */
+  /* FIXME: We really ought to just install a default prefs.js... */
+  _init_bool_pref ("browser.download.useDownloadDir", TRUE);
+  _init_int_pref ("browser.download.folderList", 0);
+  _init_bool_pref ("browser.download.manager.showAlertOnComplete", TRUE);
+  _init_int_pref ("browser.download.manager.showAlertInterval", 2000);
+  _init_int_pref ("browser.download.manager.retention", 2);
+  _init_bool_pref ("browser.download.manager.showWhenStarting", TRUE);
+  _init_bool_pref ("browser.download.manager.useWindow", TRUE);
+  _init_bool_pref ("browser.download.manager.closeWhenDone", TRUE);
+  _init_int_pref ("browser.download.manager.openDelay", 0);
+  _init_bool_pref ("browser.download.manager.focusWhenStarting", TRUE);
+  _init_int_pref ("browser.download.manager.flashCount", 2);
+  _init_bool_pref ("browser.download.manager.alertOnEXEOpen", TRUE);
+
+  _init_bool_pref ("browser.dom.window.dump.enabled", TRUE);
+
+  _init_int_pref ("alerts.slideIncrement", 1);
+  _init_int_pref ("alerts.slideIncrementTime", 10);
+  _init_int_pref ("alerts.totalOpenTime", 4000);
+  _init_int_pref ("alerts.height", 50);
+}
+
 void
 clutter_mozheadless_prefs_init ()
 {
@@ -599,6 +688,7 @@ clutter_mozheadless_prefs_init ()
 
   if (prefs)
     {
+
       moz_headless_set_prefs_data (prefs);
 
       moz_headless_set_prefs_callbacks (
@@ -641,6 +731,8 @@ clutter_mozheadless_prefs_init ()
 
       g_signal_connect (prefs, "branch-changed",
                         G_CALLBACK (_branch_changed_cb), NULL);
+
+      _init_default_prefs ();
     }
 }
 

@@ -3,10 +3,14 @@ jardata = \
 	locale/branding/brand.dtd \
 	locale/branding/brand.properties
 
-resdir = $(pkgdatadir)/chrome
-res_DATA = \
+chromedir = $(pkgdatadir)/chrome
+chrome_DATA = \
 	branding.jar \
 	branding.manifest
+
+resdir = $(pkgdatadir)
+res_DATA = \
+	mimeTypes.rdf
 
 branding.jar: $(jardata) branding.manifest
 	rm -f $@ && zip $@ $(jardata)
