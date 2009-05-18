@@ -16,6 +16,6 @@ branding.jar: $(jardata) branding.manifest
 	rm -f $@ && zip $@ $(jardata)
 
 MAINTAINERCLEANFILES = Makefile.in
-EXTRA_DIST = $(jardata) branding.jar branding.manifest
+EXTRA_DIST = $(jardata) $(res_DATA) $(chrome_DATA)
 CLEANFILES = branding.jar
 
