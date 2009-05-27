@@ -599,52 +599,59 @@ input_io_func (GIOChannel      *source,
   /* FYI: Maximum URL length in IE is 2083 characters */
   gchar buf[4096];
   gsize length;
-
   GError *error = NULL;
-  GIOStatus status;
+  gboolean result = TRUE;
 
-  switch (condition) {
-    case G_IO_PRI :
-    case G_IO_IN :
+  if (condition & (G_IO_PRI | G_IO_IN))
+    {
+      GIOStatus status = g_io_channel_read_chars (source, buf, sizeof (buf),
+                                                  &length, &error);
+      if (status == G_IO_STATUS_NORMAL)
+        {
+          gsize current_length = 0;
+          while (current_length < length)
+            {
+              gchar *feedback = &buf[current_length];
+              current_length += strlen (&buf[current_length]) + 1;
+              process_feedback (self, feedback);
+            }
+        }
+      else if (status == G_IO_STATUS_ERROR)
+        {
+          g_warning ("Error reading from source: %s", error->message);
+          g_error_free (error);
+          result = FALSE;
+        }
+      else if (status == G_IO_STATUS_EOF)
+        {
+          g_warning ("Reached end of input pipe");
+          result = FALSE;
+        }
+      /* do nothing if status is G_IO_STATUS_AGAIN */
+    }
 
-      status = g_io_channel_read_chars (source, buf, sizeof (buf), &length,
-                                        &error);
-      if (status == G_IO_STATUS_NORMAL) {
-        gsize current_length = 0;
-        while (current_length < length)
-          {
-            gchar *feedback = &buf[current_length];
-            current_length += strlen (&buf[current_length]) + 1;
-            process_feedback (self, feedback);
-          }
-        return TRUE;
-      } else if (status == G_IO_STATUS_ERROR) {
-        g_warning ("Error reading from source: %s", error->message);
-        g_error_free (error);
-      } else if (status == G_IO_STATUS_EOF) {
-        g_warning ("Reached end of input pipe");
-      } else if (status == G_IO_STATUS_AGAIN) {
-        return TRUE;
-      }
-      break;
-
-    case G_IO_ERR :
-    case G_IO_NVAL :
-      g_warning ("Error or invalid request");
-      break;
-
-    case G_IO_HUP :
+  if (condition & G_IO_HUP)
+    {
       g_warning ("Unexpected hang-up");
-      break;
+      result = FALSE;
+    }
 
-    default :
-      g_warning ("Unhandled IO condition");
-      break;
-  }
+  if (condition & (G_IO_ERR | G_IO_NVAL))
+    {
+      g_warning ("Error or invalid request");
+      result = FALSE;
+    }
 
-  g_signal_emit (self, signals[CRASHED], 0);
+  if (condition & ~(G_IO_PRI | G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL))
+    {
+      g_warning ("Unexpected IO condition");
+      result = FALSE;
+    }
 
-  return FALSE;
+  if (!result)
+    g_signal_emit (self, signals[CRASHED], 0);
+
+  return result;
 }
 
 static void
@@ -1454,6 +1461,9 @@ clutter_mozembed_allocate (ClutterActor          *actor,
   width = CLUTTER_UNITS_TO_INT (box->x2 - box->x1);
   height = CLUTTER_UNITS_TO_INT (box->y2 - box->y1);
   
+  if (width < 0 || height < 0)
+    return;
+
   clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
                                  &tex_width, &tex_height);
   

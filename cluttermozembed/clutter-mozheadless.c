@@ -374,10 +374,11 @@ file_changed_cb (GFileMonitor           *monitor,
   g_io_channel_set_encoding (view->input, NULL, NULL);
   g_io_channel_set_buffered (view->input, FALSE);
   g_io_channel_set_close_on_unref (view->input, TRUE);
-  g_io_add_watch (view->input,
-                  G_IO_IN | G_IO_ERR | G_IO_NVAL | G_IO_HUP,
-                  (GIOFunc)input_io_func,
-                  view);
+  view->watch_id = g_io_add_watch (view->input,
+                                   G_IO_IN | G_IO_PRI | G_IO_ERR |
+                                   G_IO_NVAL | G_IO_HUP,
+                                   (GIOFunc)input_io_func,
+                                   view);
 
   /* Send the shm name and an update to the new view */
   feedback = g_strdup_printf ("shm-name %s", priv->shm_name);
@@ -864,16 +865,18 @@ input_io_func (GIOChannel              *source,
                ClutterMozHeadlessView  *view)
 {
   /* FYI: Maximum URL length in IE is 2083 characters */
-  GIOStatus status;
   gchar buf[4096];
   gsize length;
-
   GError *error = NULL;
+  gboolean result = TRUE;
+
   ClutterMozHeadless *moz_headless = view->parent;
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
 
-  switch (condition) {
-    case G_IO_IN :
+  if (condition & (G_IO_PRI | G_IO_IN))
+    {
+      GIOStatus status;
+
       /* We've received a connection, remove the disconnect timeout */
       if (priv->connect_timeout_source)
         {
@@ -881,55 +884,68 @@ input_io_func (GIOChannel              *source,
           priv->connect_timeout_source = 0;
         }
 
-      status = g_io_channel_read_chars (source, buf, sizeof (buf),
-                                        &length, &error);
-      if (status == G_IO_STATUS_NORMAL) {
-        gsize current_length = 0;
-        while (current_length < length)
-          {
-            gchar *command = &buf[current_length];
-            current_length += strlen (&buf[current_length]) + 1;
-            process_command (view, command);
-          }
-        return TRUE;
-      } else if (status == G_IO_STATUS_ERROR) {
-        g_warning ("Error reading from source: %s", error->message);
-        g_error_free (error);
-        break;
-      } else if (status == G_IO_STATUS_EOF) {
-        g_warning ("End of file");
-      } else if (status == G_IO_STATUS_AGAIN) {
-        return TRUE;
-      } else {
-        g_warning ("Unknown condition");
-      }
-      break;
+      status = g_io_channel_read_chars (source, buf, sizeof (buf), &length,
+                                        &error);
+      if (status == G_IO_STATUS_NORMAL)
+        {
+          gsize current_length = 0;
+          while (current_length < length)
+            {
+              gchar *command = &buf[current_length];
+              g_warning (command);
+              current_length += strlen (&buf[current_length]) + 1;
+              process_command (view, command);
+            }
+        }
+      else if (status == G_IO_STATUS_ERROR)
+        {
+          g_warning ("Error reading from source: %s", error->message);
+          g_error_free (error);
+          result = FALSE;
+        }
+      else if (status == G_IO_STATUS_EOF)
+        {
+          g_warning ("End of file");
+          result = FALSE;
+        }
+      /* Do nothing if status is G_IO_STATUS_AGAIN */
+    }
 
-    case G_IO_ERR :
-      g_warning ("Error");
-      break;
-
-    case G_IO_NVAL :
-      g_warning ("Invalid request");
-      break;
-
-    case G_IO_HUP :
+  if (condition & G_IO_HUP)
+    {
       /* Don't warn on this, this is fine */
       /*g_warning ("Hung up");*/
-      break;
+      result = FALSE;
+    }
 
-    default :
-      g_warning ("Unhandled IO condition");
-      break;
-  }
+  if (condition & G_IO_ERR)
+    {
+      g_warning ("Error");
+      result = FALSE;
+    }
 
-  /* Kill this head or disconnect the view */
-  if ((priv->views) && (view == priv->views->data))
-    g_object_unref (moz_headless);
-  else
-    disconnect_view (view);
+  if (condition & G_IO_NVAL)
+    {
+      g_warning ("Invalid request");
+      result = FALSE;
+    }
 
-  return FALSE;
+  if (condition & ~(G_IO_PRI | G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL))
+    {
+      g_warning ("Unexpected IO condition");
+      result = FALSE;
+    }
+
+  if (!result)
+    {
+      /* Kill this head or disconnect the view */
+      if ((priv->views) && (view == priv->views->data))
+        g_object_unref (moz_headless);
+      else
+        disconnect_view (view);
+    }
+
+  return result;
 }
 
 static void
