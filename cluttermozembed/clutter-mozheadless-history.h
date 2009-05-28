@@ -21,8 +21,12 @@
 #ifndef _CLUTTER_MOZHEADLESS_HISTORY_H
 #define _CLUTTER_MOZHEADLESS_HISTORY_H
 
+G_BEGIN_DECLS
+
 void clutter_mozheadless_history_init ();
 void clutter_mozheadless_history_deinit ();
+
+G_END_DECLS
 
 #endif
 

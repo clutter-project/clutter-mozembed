@@ -144,7 +144,7 @@ HeadlessPrefService::~HeadlessPrefService()
     {
       g_signal_handlers_disconnect_by_func (mMhsPrefs,
                                             (gpointer)_branch_changed_cb,
-                                            NULL);
+                                            this);
       g_object_unref (mMhsPrefs);
       mMhsPrefs = NULL;
     }
