@@ -4,23 +4,27 @@ GLIB_MKENUMS = `pkg-config --variable=glib_mkenums glib-2.0`
 
 AM_CPPFLAGS = \
 	-DPKGDATADIR=\"$(pkgdatadir)\" \
+	-DMOZHOME=\"$(MOZHOME)\"
+
+AM_CFLAGS = \
 	$(GOBJECT_CFLAGS) \
 	$(GTHREAD_CFLAGS) \
 	$(CLUTTER_CFLAGS) \
 	$(MOZILLA_CFLAGS) \
 	$(MHS_CFLAGS) \
-	-DMOZHOME=\"$(MOZHOME)\" \
 	-Wall
-AM_LDFLAGS = \
-	$(GOBJECT_LIBS) \
-	$(GTHREAD_LIBS) \
-	$(CLUTTER_LIBS) \
-	$(MOZILLA_LIBS) \
-	$(MHS_LIBS)
+
+AM_CXXFLAGS = \
+	$(GOBJECT_CFLAGS) \
+	$(GTHREAD_CFLAGS) \
+	$(CLUTTER_CFLAGS) \
+	$(MOZILLA_CFLAGS) \
+	$(MHS_CFLAGS) \
+	-Wall -fno-rtti -fno-exceptions
 
 if SUPPORT_PLUGINS
 AM_CPPFLAGS += $(GTK_CFLAGS)
-AM_LDFLAGS += $(GTK_LIBS)
+AM_CXXFLAGS += $(GTK_CFLAGS)
 endif
 
 BUILT_SOURCES = \
@@ -57,15 +61,34 @@ source_c = \
 
 bin_PROGRAMS = clutter-mozheadless
 
+clutter_mozheadless_LDADD = \
+	@GOBJECT_LIBS@ \
+	@MOZILLA_LIBS@ \
+	@MHS_LIBS@
+
+if SUPPORT_PLUGINS
+clutter_mozheadless_LDADD += @GTK_LIBS@
+endif
+
 clutter_mozheadless_SOURCES = \
 	clutter-mozheadless.c \
 	clutter-mozheadless.h \
 	clutter-mozheadless-history.c \
 	clutter-mozheadless-history.h \
-	clutter-mozheadless-prefs.c \
+	clutter-mozheadless-prefs.cc \
 	clutter-mozheadless-prefs.h
 
 lib_LTLIBRARIES = libcluttermozembed.la
+
+libcluttermozembed_la_LIBADD = \
+	@GOBJECT_LIBS@ \
+	@GTHREAD_LIBS@ \
+	@CLUTTER_LIBS@
+
+if SUPPORT_PLUGINS
+libcluttermozembed_la_LIBADD += @GTK_LIBS@
+endif
+
 libcluttermozembed_la_SOURCES = $(source_c) $(source_h) $(BUILT_SOURCES)
 
 library_includedir=$(includedir)/cluttermozembed

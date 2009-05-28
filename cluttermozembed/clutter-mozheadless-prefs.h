@@ -21,8 +21,12 @@
 #ifndef _CLUTTER_MOZHEADLESS_PREFS_H
 #define _CLUTTER_MOZHEADLESS_PREFS_H
 
+G_BEGIN_DECLS
+
 void clutter_mozheadless_prefs_init ();
 void clutter_mozheadless_prefs_deinit ();
+
+G_END_DECLS
 
 #endif
 

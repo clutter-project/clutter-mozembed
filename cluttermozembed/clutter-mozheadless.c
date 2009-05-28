@@ -892,7 +892,6 @@ input_io_func (GIOChannel              *source,
           while (current_length < length)
             {
               gchar *command = &buf[current_length];
-              g_warning (command);
               current_length += strlen (&buf[current_length]) + 1;
               process_command (view, command);
             }
@@ -1226,6 +1225,7 @@ main (int argc, char **argv)
   moz_headless_set_comp_path (PKGDATADIR);
   moz_headless_set_directory (NS_APP_USER_MIMETYPES_50_FILE,
                               PKGDATADIR "/mimeTypes.rdf");
+  moz_headless_push_startup ();
 
   clutter_mozheadless_history_init ();
   clutter_mozheadless_prefs_init ();
@@ -1243,6 +1243,7 @@ main (int argc, char **argv)
   mainloop = g_main_loop_new (NULL, FALSE);
   g_main_loop_run (mainloop);
 
+  moz_headless_pop_startup ();
   clutter_mozheadless_history_deinit ();
   clutter_mozheadless_prefs_deinit ();
 
