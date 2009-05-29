@@ -38,6 +38,7 @@
 #include "clutter-mozheadless.h"
 #include "clutter-mozheadless-history.h"
 #include "clutter-mozheadless-prefs.h"
+#include "clutter-mozheadless-downloads.h"
 
 #include <nsAppDirectoryServiceDefs.h>
 
@@ -1229,6 +1230,7 @@ main (int argc, char **argv)
 
   clutter_mozheadless_history_init ();
   clutter_mozheadless_prefs_init ();
+  clutter_mozheadless_downloads_init ();
 
   moz_headless = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
                                "output", argv[1],
@@ -1246,6 +1248,7 @@ main (int argc, char **argv)
   moz_headless_pop_startup ();
   clutter_mozheadless_history_deinit ();
   clutter_mozheadless_prefs_deinit ();
+  clutter_mozheadless_downloads_deinit ();
 
   return 0;
 }

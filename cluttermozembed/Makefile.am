@@ -73,6 +73,8 @@ endif
 clutter_mozheadless_SOURCES = \
 	clutter-mozheadless.c \
 	clutter-mozheadless.h \
+	clutter-mozheadless-downloads.cc \
+	clutter-mozheadless-downloads.h \
 	clutter-mozheadless-history.cc \
 	clutter-mozheadless-history.h \
 	clutter-mozheadless-prefs.cc \
