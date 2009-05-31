@@ -2193,9 +2193,9 @@ clutter_mozembed_constructed (GObject *object)
           success = g_spawn_async_with_pipes (NULL,
                                               argv,
                                               NULL,
-                                              G_SPAWN_SEARCH_PATH |
+                                              G_SPAWN_SEARCH_PATH/* |
                                               G_SPAWN_STDERR_TO_DEV_NULL |
-                                              G_SPAWN_STDOUT_TO_DEV_NULL,
+                                              G_SPAWN_STDOUT_TO_DEV_NULL*/,
                                               NULL,
                                               NULL,
                                               &priv->child_pid,
