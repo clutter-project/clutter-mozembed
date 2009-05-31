@@ -58,22 +58,10 @@ HeadlessDownloads::~HeadlessDownloads()
 {
 }
 
-NS_IMETHODIMP_(nsrefcnt)
-HeadlessDownloads::AddRef ()
-{
-  return 1;
-}
-
-NS_IMETHODIMP_(nsrefcnt)
-HeadlessDownloads::Release ()
-{
-  return 1;
-}
-
-NS_IMPL_QUERY_INTERFACE3(HeadlessDownloads,
-                         nsIHelperAppLauncherDialog,
-                         nsIWebProgressListener,
-                         nsIWebProgressListener2)
+NS_IMPL_ISUPPORTS3(HeadlessDownloads,
+                   nsIHelperAppLauncherDialog,
+                   nsIWebProgressListener,
+                   nsIWebProgressListener2)
 
 // nsIHelperAppLauncherDialog
 
