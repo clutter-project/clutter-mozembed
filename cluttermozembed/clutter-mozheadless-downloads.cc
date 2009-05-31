@@ -113,6 +113,10 @@ HeadlessDownloads::PromptForSaveToFile(nsIHelperAppLauncher  *aLauncher,
   rv = filePicker->Show(&result);
   if (NS_FAILED (rv) || (result == nsIFilePicker::returnCancel)) {
     return NS_ERROR_FAILURE;
+  } else {
+    // Add ourselves as the listener for the download. Note that this will
+    // add a reference, which will be released when the download is finished
+    aLauncher->SetWebProgressListener (this);
   }
 
   return filePicker->GetFile(_retval);
@@ -126,7 +130,7 @@ HeadlessDownloads::OnStateChange(nsIWebProgress *aWebProgress,
                                  PRUint32        aStateFlags,
                                  nsresult        aStatus)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -137,7 +141,12 @@ HeadlessDownloads::OnProgressChange(nsIWebProgress *aWebProgress,
                                     PRInt32         aCurTotalProgress,
                                     PRInt32         aMaxTotalProgress)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  return OnProgressChange64 (aWebProgress,
+                             aRequest,
+                             aCurSelfProgress,
+                             aMaxSelfProgress,
+                             aCurTotalProgress,
+                             aMaxTotalProgress);
 }
 
 NS_IMETHODIMP
@@ -145,7 +154,7 @@ HeadlessDownloads::OnLocationChange(nsIWebProgress *aWebProgress,
                                     nsIRequest     *aRequest,
                                     nsIURI         *aLocation)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -154,7 +163,7 @@ HeadlessDownloads::OnStatusChange(nsIWebProgress  *aWebProgress,
                                   nsresult         aStatus,
                                   const PRUnichar *aMessage)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -162,7 +171,7 @@ HeadlessDownloads::OnSecurityChange(nsIWebProgress *aWebProgress,
                                     nsIRequest     *aRequest,
                                     PRUint32        aState)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  return NS_OK;
 }
 
 // nsIWebProgressListener2
@@ -175,7 +184,8 @@ HeadlessDownloads::OnProgressChange64(nsIWebProgress *aWebProgress,
                                       PRInt64         aCurTotalProgress,
                                       PRInt64         aMaxTotalProgress)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  g_debug ("Progress: %Ld/%Ld", aCurTotalProgress, aMaxTotalProgress);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -185,7 +195,7 @@ HeadlessDownloads::OnRefreshAttempted(nsIWebProgress *aWebProgress,
                                       PRBool          aSameURI,
                                       PRBool         *_retval NS_OUTPARAM)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  return NS_OK;
 }
 
 #define HEADLESS_DOWNLOADS_CID \
