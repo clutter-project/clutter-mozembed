@@ -48,14 +48,22 @@ public:
   NS_DECL_NSIHELPERAPPLAUNCHERDIALOG
   NS_DECL_NSIWEBPROGRESSLISTENER
   NS_DECL_NSIWEBPROGRESSLISTENER2
+
+private:
+  MozHeadless *mMozHeadless;
 };
 
 HeadlessDownloads::HeadlessDownloads()
 {
+  mMozHeadless = NULL;
 }
 
 HeadlessDownloads::~HeadlessDownloads()
 {
+  if (mMozHeadless) {
+    g_object_unref (G_OBJECT (mMozHeadless));
+    mMozHeadless = NULL;
+  }
 }
 
 NS_IMPL_ISUPPORTS3(HeadlessDownloads,
@@ -117,6 +125,14 @@ HeadlessDownloads::PromptForSaveToFile(nsIHelperAppLauncher  *aLauncher,
     // Add ourselves as the listener for the download. Note that this will
     // add a reference, which will be released when the download is finished
     aLauncher->SetWebProgressListener (this);
+
+    // Add a reference on the window that started this download, so it doesn't
+    // get destroyed until the download finishes
+    mMozHeadless = moz_headless_get_from_dom_window ((gpointer)window);
+    if (mMozHeadless)
+      g_object_ref (mMozHeadless);
+    else
+      g_warning ("Couldn't find window for download");
   }
 
   return filePicker->GetFile(_retval);
@@ -184,7 +200,7 @@ HeadlessDownloads::OnProgressChange64(nsIWebProgress *aWebProgress,
                                       PRInt64         aCurTotalProgress,
                                       PRInt64         aMaxTotalProgress)
 {
-  g_debug ("Progress: %Ld/%Ld", aCurTotalProgress, aMaxTotalProgress);
+  //g_debug ("Progress: %Ld/%Ld", aCurTotalProgress, aMaxTotalProgress);
   return NS_OK;
 }
 
