@@ -22,7 +22,6 @@
 #define _CLUTTER_MOZEMBED_DOWNLOAD
 
 #include <glib-object.h>
-#include "clutter-mozembed.h"
 
 G_BEGIN_DECLS
 

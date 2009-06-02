@@ -24,6 +24,7 @@
 #include <glib-object.h>
 #include <clutter/clutter.h>
 #include <moz-headless.h>
+#include "clutter-mozembed-download.h"
 
 G_BEGIN_DECLS
 
@@ -53,13 +54,13 @@ typedef struct _ClutterMozEmbedPrivate ClutterMozEmbedPrivate;
 
 typedef struct {
   ClutterTexture parent;
-  
+
   ClutterMozEmbedPrivate *priv;
 } ClutterMozEmbed;
 
 typedef struct {
   ClutterTextureClass parent_class;
-  
+
   /* Signals */
   void (* progress)     (ClutterMozEmbed *mozembed, gdouble progress);
   void (* net_start)    (ClutterMozEmbed *mozembed);
@@ -71,6 +72,8 @@ typedef struct {
   void (* closed)       (ClutterMozEmbed *mozembed);
   void (* link_message) (ClutterMozEmbed *mozembed, const gchar *message);
   void (* size_request) (ClutterMozEmbed *mozembed, gint width, gint height);
+  void (* download)     (ClutterMozEmbed         *mozembed,
+                         ClutterMozEmbedDownload *download);
 } ClutterMozEmbedClass;
 
 GType clutter_mozembed_get_type (void);
@@ -94,6 +97,7 @@ void clutter_mozembed_forward (ClutterMozEmbed *mozembed);
 void clutter_mozembed_stop (ClutterMozEmbed *mozembed);
 void clutter_mozembed_refresh (ClutterMozEmbed *mozembed);
 void clutter_mozembed_reload (ClutterMozEmbed *mozembed);
+GList *clutter_mozembed_get_downloads (ClutterMozEmbed *mozembed);
 
 gboolean clutter_mozembed_get_smooth_scroll (ClutterMozEmbed *mozembed);
 void clutter_mozembed_set_smooth_scroll (ClutterMozEmbed *mozembed, gboolean smooth);

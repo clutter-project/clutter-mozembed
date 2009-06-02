@@ -81,6 +81,7 @@ enum
   CLOSED,
   LINK_MESSAGE,
   SIZE_REQUEST,
+  DOWNLOAD,
 
   LAST_SIGNAL
 };
@@ -94,7 +95,7 @@ struct _ClutterMozEmbedPrivate
   GIOChannel      *output;
   guint            watch_id;
   GPid             child_pid;
-  
+
   gchar           *input_file;
   gchar           *output_file;
   gchar           *shm_name;
@@ -102,10 +103,10 @@ struct _ClutterMozEmbedPrivate
   gboolean         new_data;
   int              shm_fd;
   gboolean         spawn;
-  
+
   void            *image_data;
   int              image_size;
-  
+
   gboolean         read_only;
 
   gboolean            motion_ack;
@@ -129,6 +130,7 @@ struct _ClutterMozEmbedPrivate
   gdouble          progress;
   gboolean         can_go_back;
   gboolean         can_go_forward;
+  GHashTable      *downloads;
 
   /* Offsets for async (smooth) scrolling mode */
   gint             offset_x;
@@ -1299,7 +1301,7 @@ clutter_mozembed_dispose (GObject *object)
           g_warning ("Error closing IO channel: %s", error->message);
           g_error_free (error);
         }
-      
+
       g_io_channel_unref (priv->input);
       priv->input = NULL;
     }
@@ -1307,16 +1309,22 @@ clutter_mozembed_dispose (GObject *object)
   if (priv->output)
     {
       GError *error = NULL;
-      
+
       if (g_io_channel_shutdown (priv->output, FALSE, &error) ==
           G_IO_STATUS_ERROR)
         {
           g_warning ("Error closing IO channel: %s", error->message);
           g_error_free (error);
         }
-      
+
       g_io_channel_unref (priv->output);
       priv->output = NULL;
+    }
+
+  if (priv->downloads)
+    {
+      g_hash_table_unref (priv->downloads);
+      priv->downloads = NULL;
     }
 
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->dispose (object);
@@ -1326,10 +1334,10 @@ static void
 clutter_mozembed_finalize (GObject *object)
 {
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (object)->priv;
-  
+
   g_remove (priv->output_file);
   g_remove (priv->input_file);
-  
+
   g_free (priv->location);
   g_free (priv->title);
   g_free (priv->input_file);
@@ -1341,7 +1349,7 @@ clutter_mozembed_finalize (GObject *object)
 
   if (priv->image_data)
     munmap (priv->image_data, priv->image_size);
-  
+
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->finalize (object);
 }
 
@@ -2558,20 +2566,33 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   NULL, NULL,
                   _clutter_mozembed_marshal_VOID__INT_INT,
                   G_TYPE_NONE, 2, G_TYPE_INT, G_TYPE_INT);
+
+  signals[DOWNLOAD] =
+    g_signal_new ("download",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, download),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__OBJECT,
+                  G_TYPE_NONE, 1, CLUTTER_TYPE_MOZEMBED_DOWNLOAD);
 }
 
 static void
 clutter_mozembed_init (ClutterMozEmbed *self)
 {
   ClutterMozEmbedPrivate *priv = self->priv = MOZEMBED_PRIVATE (self);
- 
+
   priv->motion_ack = TRUE;
   priv->spawn = TRUE;
   priv->poll_timeout = 1000;
   priv->connect_timeout = 10000;
+  priv->downloads = g_hash_table_new_full (g_direct_hash,
+                                           g_direct_equal,
+                                           NULL,
+                                           (GDestroyNotify)g_object_unref);
 
   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
-  
+
   /* Turn off sync-size (we manually size the texture on allocate) */
   g_object_set (G_OBJECT (self), "sync-size", FALSE, NULL);
 }
@@ -2788,3 +2809,10 @@ clutter_mozembed_get_cursor (ClutterMozEmbed *mozembed)
 {
   return mozembed->priv->cursor;
 }
+
+GList *
+clutter_mozembed_get_downloads (ClutterMozEmbed *mozembed)
+{
+  return g_hash_table_get_values (mozembed->priv->downloads);
+}
+
