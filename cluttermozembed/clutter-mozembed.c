@@ -20,6 +20,7 @@
 #include <config.h>
 
 #include "clutter-mozembed.h"
+#include "clutter-mozembed-private.h"
 #include "clutter-mozembed-marshal.h"
 #include <glib/gstdio.h>
 #include <gio/gio.h>
@@ -297,7 +298,7 @@ update (ClutterMozEmbed *self,
     }
 }
 
-static void
+void
 send_command (ClutterMozEmbed *mozembed, const gchar *command)
 {
   if (!command)
@@ -654,7 +655,7 @@ input_io_func (GIOChannel      *source,
   return result;
 }
 
-static void
+void
 block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;

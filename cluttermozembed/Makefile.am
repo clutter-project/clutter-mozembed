@@ -55,9 +55,13 @@ clutter-mozembed-marshal.c: Makefile clutter-mozembed-marshal.list
 	rm -f xgen-tmc
 
 source_h = \
-	clutter-mozembed.h
+	clutter-mozembed.h \
+	clutter-mozembed-download.h
+source_priv_h = \
+	clutter-mozembed-private.h
 source_c = \
-	clutter-mozembed.c
+	clutter-mozembed.c \
+	clutter-mozembed-download.c
 
 bin_PROGRAMS = clutter-mozheadless
 
@@ -91,7 +95,11 @@ if SUPPORT_PLUGINS
 libcluttermozembed_la_LIBADD += @GTK_LIBS@
 endif
 
-libcluttermozembed_la_SOURCES = $(source_c) $(source_h) $(BUILT_SOURCES)
+libcluttermozembed_la_SOURCES = \
+	$(source_c) \
+	$(source_h) \
+	$(source_priv_h) \
+	$(BUILT_SOURCES)
 
 library_includedir=$(includedir)/cluttermozembed
 library_include_HEADERS = $(source_h)
