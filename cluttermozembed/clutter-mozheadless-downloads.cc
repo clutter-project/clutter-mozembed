@@ -51,16 +51,26 @@ public:
 
 private:
   MozHeadless *mMozHeadless;
+  gint         mDownloadId;
+
+  static gint sDownloadId;
 };
+
+gint HeadlessDownloads::sDownloadId = 0;
 
 HeadlessDownloads::HeadlessDownloads()
 {
   mMozHeadless = NULL;
+  mDownloadId = sDownloadId ++;
 }
 
 HeadlessDownloads::~HeadlessDownloads()
 {
   if (mMozHeadless) {
+    gchar *feedback = g_strdup_printf ("dl-complete %d", mDownloadId);
+    send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless), feedback);
+    g_free (feedback);
+
     g_object_unref (G_OBJECT (mMozHeadless));
     mMozHeadless = NULL;
   }
@@ -130,7 +140,30 @@ HeadlessDownloads::PromptForSaveToFile(nsIHelperAppLauncher  *aLauncher,
     // get destroyed until the download finishes
     mMozHeadless = moz_headless_get_from_dom_window ((gpointer)window);
     if (mMozHeadless)
-      g_object_ref (mMozHeadless);
+      {
+        g_object_ref (mMozHeadless);
+
+        // Inform ClutterMozEmbed of this new download
+        nsIURI *uri, *file_uri;
+        if (NS_SUCCEEDED (aLauncher->GetSource(&uri)) &&
+            NS_SUCCEEDED (filePicker->GetFileURL(&file_uri)))
+          {
+            nsCAutoString ns_uri_string, ns_file_uri_string;
+            if (NS_SUCCEEDED (uri->GetSpec(ns_uri_string)) &&
+                NS_SUCCEEDED (file_uri->GetSpec(ns_file_uri_string)))
+              {
+                const char *uri_string = ns_uri_string.get();
+                const char *file_uri_string = ns_file_uri_string.get();
+                gchar *feedback = g_strdup_printf ("dl-start %d %s %s",
+                                                   mDownloadId,
+                                                   uri_string,
+                                                   file_uri_string);
+                send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
+                                   feedback);
+                g_free (feedback);
+              }
+          }
+      }
     else
       g_warning ("Couldn't find window for download");
   }
@@ -200,7 +233,19 @@ HeadlessDownloads::OnProgressChange64(nsIWebProgress *aWebProgress,
                                       PRInt64         aCurTotalProgress,
                                       PRInt64         aMaxTotalProgress)
 {
-  //g_debug ("Progress: %Ld/%Ld", aCurTotalProgress, aMaxTotalProgress);
+  if (mMozHeadless)
+    {
+      /* FIXME: We almost certainly need to throttle this, or
+       *        wait for acknowledgement from the embedder.
+       */
+      gchar *feedback = g_strdup_printf ("dl-progress %d %lf",
+                                         mDownloadId,
+                                         aCurTotalProgress /
+                                         (gdouble)aMaxTotalProgress);
+      send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless), feedback);
+      g_free (feedback);
+    }
+
   return NS_OK;
 }
 

@@ -26,7 +26,6 @@
 #endif
 #include <glib.h>
 #include <glib/gstdio.h>
-#include <gio/gio.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -50,26 +49,12 @@ G_DEFINE_TYPE (ClutterMozHeadless, clutter_mozheadless, MOZ_TYPE_HEADLESS)
 enum
 {
   PROP_0,
- 
+
   PROP_INPUT,
   PROP_OUTPUT,
   PROP_SHM,
   PROP_CONNECT_TIMEOUT
 };
-
-typedef struct
-{
-  ClutterMozHeadless *parent;
-
-  gchar           *input_file;
-  gchar           *output_file;
-  GIOChannel      *input;
-  GIOChannel      *output;
-  guint            watch_id;
-  GFileMonitor    *monitor;
-  gboolean         waiting_for_ack;
-  guint            mack_source;
-} ClutterMozHeadlessView;
 
 struct _ClutterMozHeadlessPrivate
 {
@@ -111,8 +96,7 @@ static gboolean input_io_func (GIOChannel              *source,
                                GIOCondition             condition,
                                ClutterMozHeadlessView  *view);
 
-
-static void
+void
 send_feedback (ClutterMozHeadlessView *view,
                const gchar            *feedback)
 {
@@ -122,7 +106,7 @@ send_feedback (ClutterMozHeadlessView *view,
   g_io_channel_flush (view->output, NULL);
 }
 
-static void
+void
 send_feedback_all (ClutterMozHeadless     *headless,
                    const gchar            *feedback)
 {

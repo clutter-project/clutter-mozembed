@@ -22,6 +22,7 @@
 #define _CLUTTER_MOZHEADLESS_H
 
 #include <glib-object.h>
+#include <gio/gio.h>
 #include <moz-headless.h>
 
 G_BEGIN_DECLS
@@ -52,17 +53,39 @@ typedef struct _ClutterMozHeadlessPrivate ClutterMozHeadlessPrivate;
 
 typedef struct {
   MozHeadless parent;
-  
+
   ClutterMozHeadlessPrivate *priv;
 } ClutterMozHeadless;
 
+typedef struct
+{
+  ClutterMozHeadless *parent;
+
+  gchar           *input_file;
+  gchar           *output_file;
+  GIOChannel      *input;
+  GIOChannel      *output;
+  guint            watch_id;
+  GFileMonitor    *monitor;
+  gboolean         waiting_for_ack;
+  guint            mack_source;
+} ClutterMozHeadlessView;
+
 typedef struct {
   MozHeadlessClass parent_class;
-  
+
   /* Signals */
 } ClutterMozHeadlessClass;
 
 GType clutter_mozheadless_get_type (void);
+
+void
+send_feedback (ClutterMozHeadlessView *view,
+               const gchar            *feedback);
+
+void
+send_feedback_all (ClutterMozHeadless     *headless,
+                   const gchar            *feedback);
 
 G_END_DECLS
 
