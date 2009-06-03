@@ -31,6 +31,7 @@ enum
 {
   PROP_0,
 
+  PROP_ID,
   PROP_SOURCE,
   PROP_DESTINATION,
   PROP_PROGRESS,
@@ -47,6 +48,7 @@ static guint signals[LAST_SIGNAL] = { 0, };
 
 struct _ClutterMozEmbedDownloadPrivate
 {
+  gint     id;
   gchar   *source_uri;
   gchar   *dest_uri;
   gdouble  progress;
@@ -59,6 +61,10 @@ clutter_mozembed_download_get_property (GObject *object, guint property_id,
   ClutterMozEmbedDownload *self = CLUTTER_MOZEMBED_DOWNLOAD (object);
 
   switch (property_id) {
+  case PROP_ID :
+    g_value_set_int (value, self->priv->id);
+    break;
+
   case PROP_SOURCE :
     g_value_set_string (value, clutter_mozembed_download_get_source (self));
     break;
@@ -85,6 +91,10 @@ clutter_mozembed_download_set_property (GObject *object, guint property_id,
   ClutterMozEmbedDownloadPrivate *priv = self->priv;
 
   switch (property_id) {
+  case PROP_ID :
+    priv->id = g_value_get_int (value);
+    break;
+
   case PROP_SOURCE :
     priv->source_uri = g_value_dup_string (value);
     break;
@@ -128,6 +138,18 @@ clutter_mozembed_download_class_init (ClutterMozEmbedDownloadClass *klass)
   object_class->set_property = clutter_mozembed_download_set_property;
   object_class->dispose = clutter_mozembed_download_dispose;
   object_class->finalize = clutter_mozembed_download_finalize;
+
+  g_object_class_install_property (object_class,
+                                   PROP_ID,
+                                   g_param_spec_double ("id",
+                                                        "ID",
+                                                        "Unique download ID.",
+                                                        G_MININT, G_MAXINT, 0,
+                                                        G_PARAM_READWRITE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_NICK |
+                                                        G_PARAM_STATIC_BLURB));
 
   g_object_class_install_property (object_class,
                                    PROP_SOURCE,
@@ -184,9 +206,12 @@ clutter_mozembed_download_init (ClutterMozEmbedDownload *self)
 }
 
 ClutterMozEmbedDownload *
-clutter_mozembed_download_new (const gchar *source, const gchar *destination)
+clutter_mozembed_download_new (gint         id,
+                               const gchar *source,
+                               const gchar *destination)
 {
   return g_object_new (CLUTTER_TYPE_MOZEMBED_DOWNLOAD,
+                       "id", id,
                        "source", source,
                        "destination", destination,
                        NULL);

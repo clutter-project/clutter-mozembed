@@ -27,7 +27,8 @@
 void send_command (ClutterMozEmbed *mozembed, const gchar *command);
 void block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback);
 
-ClutterMozEmbedDownload *clutter_mozembed_download_new (const gchar *source,
+ClutterMozEmbedDownload *clutter_mozembed_download_new (gint id,
+                                                        const gchar *source,
                                                         const gchar *dest);
 void clutter_mozembed_download_set_progress (ClutterMozEmbedDownload *download,
                                              gdouble                  progress);

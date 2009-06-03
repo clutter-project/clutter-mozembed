@@ -338,28 +338,38 @@ send_motion_event (ClutterMozEmbed *self)
 }
 
 static void
+_download_complete_cb (ClutterMozEmbedDownload *download,
+                       ClutterMozEmbed         *self)
+{
+  gint id;
+  ClutterMozEmbedPrivate *priv = self->priv;
+  g_object_get (G_OBJECT (download), "id", &id, NULL);
+  g_hash_table_remove (priv->downloads, GINT_TO_POINTER (id));
+}
+
+static void
 process_feedback (ClutterMozEmbed *self, const gchar *command)
 {
   gchar *detail;
-  
+
   ClutterMozEmbedPrivate *priv = self->priv;
-  
+
   /*g_debug ("Processing feedback: %s", command);*/
-  
+
   detail = strchr (command, ' ');
   if (detail)
     {
       detail[0] = '\0';
       detail++;
     }
-  
+
   if (priv->sync_call && g_str_equal (command, priv->sync_call))
     priv->sync_call = NULL;
 
   if (g_str_equal (command, "update"))
     {
       gint x, y, width, height, surface_width, surface_height, dx, dy, sx, sy;
-      
+
       gchar *params[10];
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
@@ -374,7 +384,7 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       sy = atoi (params[7]);
       dx = atoi (params[8]);
       dy = atoi (params[9]);
-      
+
       priv->new_data = TRUE;
 
       if (priv->doc_width != dx)
@@ -404,9 +414,9 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
           g_object_notify (G_OBJECT (self), "scroll-y");
         }
       clamp_offset (self);
-      
+
       update (self, x, y, width, height, surface_width, surface_height);
-      
+
       clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
     }
   else if (g_str_equal (command, "mack"))
@@ -426,19 +436,19 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
-      
+
       priv->progress = atof (params[0]);
-      
+
       g_signal_emit (self, signals[PROGRESS], 0, priv->progress);
     }
   else if (g_str_equal (command, "location"))
     {
       g_free (priv->location);
       priv->location = NULL;
-      
+
       if (!detail)
         return;
-      
+
       priv->location = g_strdup (detail);
       g_object_notify (G_OBJECT (self), "location");
     }
@@ -446,10 +456,10 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
     {
       g_free (priv->title);
       priv->title = NULL;
-      
+
       if (!detail)
         return;
-      
+
       priv->title = g_strdup (detail);
       g_object_notify (G_OBJECT (self), "title");
     }
@@ -587,6 +597,46 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
       priv->cursor = cursor;
       g_object_notify (G_OBJECT (self), "cursor");
+    }
+  else if (g_str_equal (command, "dl-start"))
+    {
+      ClutterMozEmbedDownload *download;
+      gchar *params[3];
+      gint id;
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      id = atoi (params[0]);
+      download = clutter_mozembed_download_new (id, params[1], params[2]);
+      g_hash_table_insert (priv->downloads, GINT_TO_POINTER (id), download);
+      g_signal_connect (download, "complete",
+                        G_CALLBACK (_download_complete_cb), self);
+      g_signal_emit (self, signals[DOWNLOAD], 0, download);
+    }
+  else if (g_str_equal (command, "dl-progress"))
+    {
+      ClutterMozEmbedDownload *download;
+      gchar *params[2];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      download = g_hash_table_lookup (priv->downloads,
+                                      GINT_TO_POINTER (atoi (params[0])));
+      clutter_mozembed_download_set_progress (download, atof (params[1]));
+    }
+  else if (g_str_equal (command, "dl-complete"))
+    {
+      ClutterMozEmbedDownload *download;
+      gchar *params[1];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      download = g_hash_table_lookup (priv->downloads,
+                                      GINT_TO_POINTER (atoi (params[0])));
+      g_signal_emit_by_name (priv->downloads, "complete");
     }
   else
     {
@@ -2578,6 +2628,19 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
 }
 
 static void
+_destroy_download_cb (gpointer data)
+{
+  g_signal_handlers_disconnect_matched (data,
+                                        G_SIGNAL_MATCH_FUNC,
+                                        0,
+                                        0,
+                                        NULL,
+                                        _download_complete_cb,
+                                        NULL);
+  g_object_unref (G_OBJECT (data));
+}
+
+static void
 clutter_mozembed_init (ClutterMozEmbed *self)
 {
   ClutterMozEmbedPrivate *priv = self->priv = MOZEMBED_PRIVATE (self);
@@ -2589,7 +2652,7 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   priv->downloads = g_hash_table_new_full (g_direct_hash,
                                            g_direct_equal,
                                            NULL,
-                                           (GDestroyNotify)g_object_unref);
+                                           _destroy_download_cb);
 
   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
 
