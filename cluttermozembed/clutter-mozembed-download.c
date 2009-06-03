@@ -24,7 +24,7 @@
 G_DEFINE_TYPE (ClutterMozEmbedDownload, clutter_mozembed_download, G_TYPE_OBJECT)
 
 #define DOWNLOAD_PRIVATE(o) \
-  (G_TYPE_INSTANCE_GET_PRIVATE ((o), CLUTTER_TYPE_MOZEMBED, \
+  (G_TYPE_INSTANCE_GET_PRIVATE ((o), CLUTTER_TYPE_MOZEMBED_DOWNLOAD, \
                                 ClutterMozEmbedDownloadPrivate))
 
 enum
@@ -141,15 +141,15 @@ clutter_mozembed_download_class_init (ClutterMozEmbedDownloadClass *klass)
 
   g_object_class_install_property (object_class,
                                    PROP_ID,
-                                   g_param_spec_double ("id",
-                                                        "ID",
-                                                        "Unique download ID.",
-                                                        G_MININT, G_MAXINT, 0,
-                                                        G_PARAM_READWRITE |
-                                                        G_PARAM_CONSTRUCT_ONLY |
-                                                        G_PARAM_STATIC_NAME |
-                                                        G_PARAM_STATIC_NICK |
-                                                        G_PARAM_STATIC_BLURB));
+                                   g_param_spec_int ("id",
+                                                     "ID",
+                                                     "Unique download ID.",
+                                                     G_MININT, G_MAXINT, 0,
+                                                     G_PARAM_READWRITE |
+                                                     G_PARAM_CONSTRUCT_ONLY |
+                                                     G_PARAM_STATIC_NAME |
+                                                     G_PARAM_STATIC_NICK |
+                                                     G_PARAM_STATIC_BLURB));
 
   g_object_class_install_property (object_class,
                                    PROP_SOURCE,
@@ -182,8 +182,7 @@ clutter_mozembed_download_class_init (ClutterMozEmbedDownloadClass *klass)
                                                         "Progress",
                                                         "Download progress.",
                                                         0.0, 100.0, 0.0,
-                                                        G_PARAM_READWRITE |
-                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_READABLE |
                                                         G_PARAM_STATIC_NAME |
                                                         G_PARAM_STATIC_NICK |
                                                         G_PARAM_STATIC_BLURB));

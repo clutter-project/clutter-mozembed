@@ -624,7 +624,8 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
       download = g_hash_table_lookup (priv->downloads,
                                       GINT_TO_POINTER (atoi (params[0])));
-      clutter_mozembed_download_set_progress (download, atof (params[1]));
+      if (download)
+        clutter_mozembed_download_set_progress (download, atof (params[1]));
     }
   else if (g_str_equal (command, "dl-complete"))
     {
@@ -636,7 +637,8 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
       download = g_hash_table_lookup (priv->downloads,
                                       GINT_TO_POINTER (atoi (params[0])));
-      g_signal_emit_by_name (priv->downloads, "complete");
+      if (download)
+        g_signal_emit_by_name (download, "complete");
     }
   else
     {
