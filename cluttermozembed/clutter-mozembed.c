@@ -175,8 +175,8 @@ typedef struct _PluginWindow
 } PluginWindow;
 
 static void
-clutter_mozembed_allocate_plugins (ClutterMozEmbed *mozembed,
-                                   gboolean         absolute_origin_changed);
+clutter_mozembed_allocate_plugins (ClutterMozEmbed        *mozembed,
+                                   ClutterAllocationFlags  flags);
 
 static gboolean
 clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed);
@@ -233,7 +233,7 @@ update (ClutterMozEmbed *self,
         gint             surface_height)
 {
   gboolean result;
-  guint tex_width, tex_height;
+  float tex_width, tex_height;
 
   ClutterMozEmbedPrivate *priv = self->priv;
   GError *error = NULL;
@@ -246,17 +246,18 @@ update (ClutterMozEmbed *self,
       if (priv->shm_fd == -1)
         g_error ("Error opening shared memory");
     }
-  
+
   clutter_actor_get_size (CLUTTER_ACTOR (self), &tex_width, &tex_height);
-  
+
   /* If the surface size of the mozilla window is different to our texture 
    * size, ignore it - it just means we've resized in the middle of the
    * backend drawing and we'll get a new update almost immediately anyway.
    */
   if (!priv->read_only)
-    if ((surface_width != tex_width) || (surface_height != tex_height))
+    if ((surface_width != (gint)tex_width) ||
+        (surface_height != (gint)tex_height))
       return;
-  
+
   if (!priv->image_data)
     {
       /*g_debug ("mmapping data");*/
@@ -264,7 +265,7 @@ update (ClutterMozEmbed *self,
       priv->image_data = mmap (NULL, priv->image_size, PROT_READ,
                                MAP_SHARED, priv->shm_fd, 0);
     }
-  
+
   /*g_debug ("Reading data");*/
 
   /* Copy data to texture */
@@ -781,7 +782,7 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
   ClutterMozEmbedPrivate *priv = mozembed->priv;
   Display                *xdpy = clutter_x11_get_default_display ();
   ClutterGeometry         geom;
-  gint                    abs_x, abs_y;
+  float                   abs_x, abs_y;
   gboolean                visible;
   gboolean                reactive;
 
@@ -798,7 +799,7 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
       clutter_actor_get_transformed_position (CLUTTER_ACTOR (mozembed),
                                               &abs_x, &abs_y);
 
-      XMoveWindow (xdpy, priv->plugin_viewport, abs_x, abs_y);
+      XMoveWindow (xdpy, priv->plugin_viewport, (int)abs_x, (int)abs_y);
 
 #warning "FIXME: plugin_viewport resizing needs to involve mozheadless"
       /* FIXME
@@ -1407,8 +1408,8 @@ clutter_mozembed_finalize (GObject *object)
 
 #ifdef SUPPORT_PLUGINS
 static void
-clutter_mozembed_allocate_plugins (ClutterMozEmbed *mozembed,
-                                   gboolean         absolute_origin_changed)
+clutter_mozembed_allocate_plugins (ClutterMozEmbed        *mozembed,
+                                   ClutterAllocationFlags  flags)
 {
   GList *pwin;
 
@@ -1418,7 +1419,7 @@ clutter_mozembed_allocate_plugins (ClutterMozEmbed *mozembed,
     {
       PluginWindow   *plugin_window = pwin->data;
       ClutterActor   *plugin_tfp = CLUTTER_ACTOR (plugin_window->plugin_tfp);
-      ClutterUnit     natural_width, natural_height;
+      gfloat          natural_width, natural_height;
       ClutterActorBox child_box;
 
       /* Note, the texture-from-pixmap actor is considered authorative over
@@ -1438,18 +1439,16 @@ clutter_mozembed_allocate_plugins (ClutterMozEmbed *mozembed,
       child_box.x2 = plugin_window->x + natural_width;
       child_box.y2 = plugin_window->y + natural_height;
 
-      clutter_actor_allocate (plugin_window->plugin_tfp,
-                              &child_box,
-                              absolute_origin_changed);
+      clutter_actor_allocate (plugin_window->plugin_tfp, &child_box, flags);
     }
 }
 #endif
 
 static void
 clutter_mozembed_get_preferred_width (ClutterActor *actor,
-                                      ClutterUnit   for_height,
-                                      ClutterUnit  *min_width_p,
-                                      ClutterUnit  *natural_width_p)
+                                      gfloat        for_height,
+                                      gfloat       *min_width_p,
+                                      gfloat       *natural_width_p)
 {
   ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = mozembed->priv;
@@ -1469,7 +1468,7 @@ clutter_mozembed_get_preferred_width (ClutterActor *actor,
           if (for_height > 0)
             *natural_width_p = width / (gfloat)height * for_height;
           else
-            *natural_width_p = CLUTTER_UNITS_FROM_INT (width);
+            *natural_width_p = (gfloat)width;
         }
     }
   else
@@ -1479,9 +1478,9 @@ clutter_mozembed_get_preferred_width (ClutterActor *actor,
 
 static void
 clutter_mozembed_get_preferred_height (ClutterActor *actor,
-                                      ClutterUnit    for_width,
-                                      ClutterUnit   *min_height_p,
-                                      ClutterUnit   *natural_height_p)
+                                       gfloat        for_width,
+                                       gfloat       *min_height_p,
+                                       gfloat       *natural_height_p)
 {
   ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = mozembed->priv;
@@ -1501,7 +1500,7 @@ clutter_mozembed_get_preferred_height (ClutterActor *actor,
           if (for_width > 0)
             *natural_height_p = height / (gfloat)width * for_width;
           else
-            *natural_height_p = CLUTTER_UNITS_FROM_INT (height);
+            *natural_height_p = (gfloat)height;
         }
     }
   else
@@ -1510,24 +1509,24 @@ clutter_mozembed_get_preferred_height (ClutterActor *actor,
 }
 
 static void
-clutter_mozembed_allocate (ClutterActor          *actor,
-                           const ClutterActorBox *box,
-                           gboolean               absolute_origin_changed)
+clutter_mozembed_allocate (ClutterActor           *actor,
+                           const ClutterActorBox  *box,
+                           ClutterAllocationFlags  flags)
 {
   gchar *command;
   gint width, height, tex_width, tex_height;
   ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
-  width = CLUTTER_UNITS_TO_INT (box->x2 - box->x1);
-  height = CLUTTER_UNITS_TO_INT (box->y2 - box->y1);
-  
+  width = (gint)(box->x2 - box->x1);
+  height = (gint)(box->y2 - box->y1);
+
   if (width < 0 || height < 0)
     return;
 
   clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
                                  &tex_width, &tex_height);
-  
+
   if ((!priv->read_only) && ((tex_width != width) || (tex_height != height)))
     {
       /* Fill the texture with white when resizing */
@@ -1544,21 +1543,21 @@ clutter_mozembed_allocate (ClutterActor          *actor,
           munmap (priv->image_data, priv->image_size);
           priv->image_data = NULL;
         }
-      
+
       /* Send a resize command to the back-end */
       command = g_strdup_printf ("resize %d %d", width, height);
       send_command (CLUTTER_MOZEMBED (actor), command);
       g_free (command);
     }
-  
+
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->
-    allocate (actor, box, absolute_origin_changed);
+    allocate (actor, box, flags);
 
 #ifdef SUPPORT_PLUGINS
   if (priv->plugin_viewport)
     {
       clutter_mozembed_sync_plugin_viewport_pos (mozembed);
-      clutter_mozembed_allocate_plugins (mozembed, absolute_origin_changed);
+      clutter_mozembed_allocate_plugins (mozembed, flags);
     }
   else
     {
@@ -1620,8 +1619,8 @@ clutter_mozembed_paint (ClutterActor *actor)
 static void
 clutter_mozembed_pick (ClutterActor *actor, const ClutterColor *c)
 {
-  guint width, height;
-  
+  float width, height;
+
   cogl_set_source_color4ub (c->red, c->green, c->blue, c->alpha);
   clutter_actor_get_size (actor, &width, &height);
   cogl_rectangle (0, 0, width, height);
@@ -1643,20 +1642,20 @@ static gboolean
 clutter_mozembed_motion_event (ClutterActor *actor, ClutterMotionEvent *event)
 {
   ClutterMozEmbedPrivate *priv;
-  ClutterUnit x_out, y_out;
-  
+  gfloat x_out, y_out;
+
   priv = CLUTTER_MOZEMBED (actor)->priv;
 
   if (!clutter_actor_transform_stage_point (actor,
-                                            CLUTTER_UNITS_FROM_INT (event->x),
-                                            CLUTTER_UNITS_FROM_INT (event->y),
+                                            (gfloat)event->x,
+                                            (gfloat)event->y,
                                             &x_out, &y_out))
     return FALSE;
-  
-  priv->motion_x = CLUTTER_UNITS_TO_INT (x_out);
-  priv->motion_y = CLUTTER_UNITS_TO_INT (y_out);
+
+  priv->motion_x = (gint)x_out;
+  priv->motion_y = (gint)y_out;
   priv->motion_m = event->modifier_state;
-  
+
   /* Throttle motion events while there's new data waiting, otherwise we can
    * peg the back-end rendering new frames. (back-end sends 'mack' when it
    * finishes processing a motion event)
@@ -1666,11 +1665,11 @@ clutter_mozembed_motion_event (ClutterActor *actor, ClutterMotionEvent *event)
       priv->pending_motion = TRUE;
       return TRUE;
     }
-  
+
   send_motion_event (CLUTTER_MOZEMBED (actor));
-  
+
   priv->motion_ack = FALSE;
-  
+
   return TRUE;
 }
 
@@ -1679,29 +1678,29 @@ clutter_mozembed_button_press_event (ClutterActor *actor,
                                      ClutterButtonEvent *event)
 {
   ClutterMozEmbedPrivate *priv;
-  ClutterUnit x_out, y_out;
+  gfloat x_out, y_out;
   gchar *command;
-  
+
   priv = CLUTTER_MOZEMBED (actor)->priv;
 
   if (!clutter_actor_transform_stage_point (actor,
-                                            CLUTTER_UNITS_FROM_INT (event->x),
-                                            CLUTTER_UNITS_FROM_INT (event->y),
+                                            (gfloat)event->x,
+                                            (gfloat)event->y,
                                             &x_out, &y_out))
     return FALSE;
-  
+
   clutter_grab_pointer (actor);
-  
+
   command =
     g_strdup_printf ("button-press %d %d %d %d %u",
-                     CLUTTER_UNITS_TO_INT (x_out),
-                     CLUTTER_UNITS_TO_INT (y_out),
+                     (gint)x_out,
+                     (gint)y_out,
                      event->button,
                      event->click_count,
                      clutter_mozembed_get_modifier (event->modifier_state));
   send_command (CLUTTER_MOZEMBED (actor), command);
   g_free (command);
-  
+
   return TRUE;
 }
 
@@ -1710,28 +1709,28 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
                                        ClutterButtonEvent *event)
 {
   ClutterMozEmbedPrivate *priv;
-  ClutterUnit x_out, y_out;
+  gfloat x_out, y_out;
   gchar *command;
-  
+
   clutter_ungrab_pointer ();
-  
+
   priv = CLUTTER_MOZEMBED (actor)->priv;
 
   if (!clutter_actor_transform_stage_point (actor,
-                                            CLUTTER_UNITS_FROM_INT (event->x),
-                                            CLUTTER_UNITS_FROM_INT (event->y),
+                                            (gfloat)event->x,
+                                            (gfloat)event->y,
                                             &x_out, &y_out))
     return FALSE;
-  
+
   command =
     g_strdup_printf ("button-release %d %d %d %u",
-                     CLUTTER_UNITS_TO_INT (x_out),
-                     CLUTTER_UNITS_TO_INT (y_out),
+                     (gint)x_out,
+                     (gint)y_out,
                      event->button,
                      clutter_mozembed_get_modifier (event->modifier_state));
   send_command (CLUTTER_MOZEMBED (actor), command);
   g_free (command);
-  
+
   return TRUE;
 }
 
@@ -1987,7 +1986,7 @@ clutter_mozembed_key_release_event (ClutterActor *actor, ClutterKeyEvent *event)
 {
   ClutterMozEmbedPrivate *priv;
   guint keyval;
-  
+
   priv = CLUTTER_MOZEMBED (actor)->priv;
 
   if (clutter_mozembed_get_keyval (event, &keyval))
@@ -1999,7 +1998,7 @@ clutter_mozembed_key_release_event (ClutterActor *actor, ClutterKeyEvent *event)
       g_free (command);
       return TRUE;
     }
-  
+
   return FALSE;
 }
 
@@ -2008,18 +2007,18 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
                                ClutterScrollEvent *event)
 {
   ClutterMozEmbedPrivate *priv;
-  ClutterUnit x_out, y_out;
+  gfloat x_out, y_out;
   gchar *command;
   gint button;
-  
+
   priv = CLUTTER_MOZEMBED (actor)->priv;
 
   if (!clutter_actor_transform_stage_point (actor,
-                                            CLUTTER_UNITS_FROM_INT (event->x),
-                                            CLUTTER_UNITS_FROM_INT (event->y),
+                                            (gfloat)event->x,
+                                            (gfloat)event->y,
                                             &x_out, &y_out))
     return FALSE;
-  
+
   switch (event->direction)
     {
     case CLUTTER_SCROLL_UP :
@@ -2060,14 +2059,14 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
 
   command =
     g_strdup_printf ("button-press %d %d %d %d %u",
-                     CLUTTER_UNITS_TO_INT (x_out),
-                     CLUTTER_UNITS_TO_INT (y_out),
+                     (gint)x_out,
+                     (gint)y_out,
                      button,
                      1,
                      clutter_mozembed_get_modifier (event->modifier_state));
   send_command (CLUTTER_MOZEMBED (actor), command);
   g_free (command);
-  
+
   return TRUE;
 }
 
