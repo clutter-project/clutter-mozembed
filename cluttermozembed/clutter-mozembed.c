@@ -100,12 +100,12 @@ struct _ClutterMozEmbedPrivate
   gchar           *output_file;
   gchar           *shm_name;
   gboolean         opened_shm;
-  gboolean         new_data;
   int              shm_fd;
   gboolean         spawn;
 
   void            *image_data;
   int              image_size;
+  guint            repaint_id;
 
   gboolean         read_only;
 
@@ -348,6 +348,15 @@ _download_complete_cb (ClutterMozEmbedDownload *download,
   g_hash_table_remove (priv->downloads, GINT_TO_POINTER (id));
 }
 
+static gboolean
+clutter_mozembed_repaint_func (ClutterMozEmbed *self)
+{
+  /* Send the paint acknowledgement */
+  send_command (self, "ack!");
+  self->priv->repaint_id = 0;
+  return FALSE;
+}
+
 static void
 process_feedback (ClutterMozEmbed *self, const gchar *command)
 {
@@ -386,8 +395,6 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       dx = atoi (params[8]);
       dy = atoi (params[9]);
 
-      priv->new_data = TRUE;
-
       if (priv->doc_width != dx)
         {
           priv->doc_width = dx;
@@ -418,6 +425,11 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
       update (self, x, y, width, height, surface_width, surface_height);
 
+      priv->repaint_id =
+        clutter_threads_add_repaint_func ((GSourceFunc)
+                                          clutter_mozembed_repaint_func,
+                                          self,
+                                          NULL);
       clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
     }
   else if (g_str_equal (command, "mack"))
@@ -1055,11 +1067,38 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 }
 
 static void
-clutter_mozembed_hide (ClutterActor *actor)
+clutter_mozembed_unmap (ClutterActor *actor)
 {
-  CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->hide (actor);
+  GList *p;
+  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (actor)->priv;
 
+  CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->unmap (actor);
   clutter_mozembed_sync_plugin_viewport_pos (CLUTTER_MOZEMBED (actor));
+
+  for (p = priv->plugin_windows; p; p = p->next)
+    {
+      PluginWindow *window = p->data;
+      clutter_actor_map (window->plugin_tfp);
+    }
+}
+
+static void
+clutter_mozembed_map (ClutterActor *actor)
+{
+  GList *p;
+  ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->map (actor);
+
+  if (!clutter_mozembed_init_viewport (mozembed))
+    g_warning ("Failed to initialise plugin window");
+
+  for (p = priv->plugin_windows; p; p = p->next)
+    {
+      PluginWindow *window = p->data;
+      clutter_actor_map (window->plugin_tfp);
+    }
 }
 #endif
 
@@ -1380,6 +1419,12 @@ clutter_mozembed_dispose (GObject *object)
       priv->downloads = NULL;
     }
 
+  if (priv->repaint_id)
+    {
+      clutter_threads_remove_repaint_func (priv->repaint_id);
+      priv->repaint_id = 0;
+    }
+
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->dispose (object);
 }
 
@@ -1559,14 +1604,6 @@ clutter_mozembed_allocate (ClutterActor           *actor,
       clutter_mozembed_sync_plugin_viewport_pos (mozembed);
       clutter_mozembed_allocate_plugins (mozembed, flags);
     }
-  else
-    {
-      /* We want an actor-mapped signal, but until then, this is a
-       * hacky way of ensuring that we're on a stage.
-       */
-      if (!clutter_mozembed_init_viewport (mozembed))
-        g_warning ("Failed to initialise plugin window");
-    }
 #endif
 }
 
@@ -1600,7 +1637,7 @@ clutter_mozembed_paint (ClutterActor *actor)
       PluginWindow *plugin_window = pwin->data;
       ClutterActor *plugin_tfp = CLUTTER_ACTOR (plugin_window->plugin_tfp);
 
-      if (CLUTTER_ACTOR_IS_VISIBLE (plugin_tfp))
+      if (CLUTTER_ACTOR_IS_MAPPED (plugin_tfp))
         clutter_actor_paint (plugin_tfp);
     }
   cogl_clip_pop ();
@@ -1608,12 +1645,6 @@ clutter_mozembed_paint (ClutterActor *actor)
 
   if (priv->async_scroll)
     cogl_clip_pop ();
-
-  if (priv->new_data && CLUTTER_ACTOR_IS_VISIBLE (actor))
-    {
-      priv->new_data = FALSE;
-      send_command (self, "ack!");
-    }
 }
 
 static void
@@ -2253,9 +2284,9 @@ clutter_mozembed_constructed (GObject *object)
           success = g_spawn_async_with_pipes (NULL,
                                               argv,
                                               NULL,
-                                              G_SPAWN_SEARCH_PATH/* |
+                                              G_SPAWN_SEARCH_PATH |
                                               G_SPAWN_STDERR_TO_DEV_NULL |
-                                              G_SPAWN_STDOUT_TO_DEV_NULL*/,
+                                              G_SPAWN_STDOUT_TO_DEV_NULL,
                                               NULL,
                                               NULL,
                                               &priv->child_pid,
@@ -2305,7 +2336,7 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
   object_class->dispose = clutter_mozembed_dispose;
   object_class->finalize = clutter_mozembed_finalize;
   object_class->constructed = clutter_mozembed_constructed;
-  
+
   actor_class->allocate             = clutter_mozembed_allocate;
   actor_class->get_preferred_width  = clutter_mozembed_get_preferred_width;
   actor_class->get_preferred_height = clutter_mozembed_get_preferred_height;
@@ -2318,7 +2349,8 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
   actor_class->key_release_event    = clutter_mozembed_key_release_event;
   actor_class->scroll_event         = clutter_mozembed_scroll_event;
 #ifdef SUPPORT_PLUGINS
-  actor_class->hide                 = clutter_mozembed_hide;
+  actor_class->map                  = clutter_mozembed_map;
+  actor_class->unmap                = clutter_mozembed_unmap;
 #endif
 
   texture_class->size_change        = clutter_mozembed_size_change;
