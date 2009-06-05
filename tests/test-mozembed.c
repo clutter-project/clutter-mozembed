@@ -107,7 +107,7 @@ new_window_cb (ClutterMozEmbed *mozembed, ClutterActor *new_mozembed)
   g_signal_connect (new_mozembed, "download",
                     G_CALLBACK (download_cb), NULL);
 
-  timeline = clutter_timeline_new_for_duration (8000);
+  timeline = clutter_timeline_new (8000);
   z_rot =
     clutter_behaviour_rotate_new (clutter_alpha_new_full (
                                     timeline, CLUTTER_LINEAR),
@@ -147,8 +147,8 @@ main (int argc, char **argv)
   clutter_actor_set_position (mozembed, 10, 10);
   clutter_actor_move_anchor_point (mozembed, 390, 290);
 
-  timeline1 = clutter_timeline_new_for_duration (1000);
-  timeline2 = clutter_timeline_new_for_duration (1500);
+  timeline1 = clutter_timeline_new (1000);
+  timeline2 = clutter_timeline_new (1500);
   x_rot =
     clutter_behaviour_rotate_new (clutter_alpha_new_full (
                                     timeline1, CLUTTER_EASE_IN_OUT_SINE),
