@@ -1780,6 +1780,7 @@ clutter_mozembed_get_keyval (ClutterKeyEvent *event, guint *keyval)
       *keyval = MOZ_KEY_BACK_SPACE;
       return TRUE;
     case CLUTTER_Tab :
+    case CLUTTER_ISO_Left_Tab :
       *keyval = MOZ_KEY_TAB;
       return TRUE;
     case CLUTTER_Return :
@@ -2284,9 +2285,9 @@ clutter_mozembed_constructed (GObject *object)
           success = g_spawn_async_with_pipes (NULL,
                                               argv,
                                               NULL,
-                                              G_SPAWN_SEARCH_PATH |
+                                              G_SPAWN_SEARCH_PATH /*|
                                               G_SPAWN_STDERR_TO_DEV_NULL |
-                                              G_SPAWN_STDOUT_TO_DEV_NULL,
+                                              G_SPAWN_STDOUT_TO_DEV_NULL*/,
                                               NULL,
                                               NULL,
                                               &priv->child_pid,
