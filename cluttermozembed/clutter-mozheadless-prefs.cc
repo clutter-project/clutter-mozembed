@@ -1267,7 +1267,7 @@ HeadlessPrefBranch::SignalChange(const char *aDomain)
 
   for (i = 0; i < count; i++) {
     pCallback = (PrefCallbackData *)mObservers->ElementAt(i);
-    if (pCallback && (strcmp (aDomain, pCallback->pDomain) == 0)) {
+    if (pCallback && (g_str_has_prefix (aDomain, pCallback->pDomain))) {
       pCallback->pObserver->Observe (static_cast<nsIPrefBranch *>(this),
                                  NS_PREFBRANCH_PREFCHANGE_TOPIC_ID,
                                  NS_ConvertUTF8toUTF16 (aDomain).get());
