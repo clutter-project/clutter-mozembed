@@ -50,7 +50,7 @@ G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_TYPE_TEXTURE)
 enum
 {
   PROP_0,
- 
+
   PROP_LOCATION,
   PROP_TITLE,
   PROP_ICON,
@@ -59,7 +59,8 @@ enum
   PROP_OUTPUT,
   PROP_SHM,
   PROP_SPAWN,
-  PROP_SMOOTH_SCROLL,
+  PROP_SCROLLBARS,
+  PROP_ASYNC_SCROLL,
   PROP_DOC_WIDTH,
   PROP_DOC_HEIGHT,
   PROP_SCROLL_X,
@@ -131,8 +132,9 @@ struct _ClutterMozEmbedPrivate
   gboolean         can_go_back;
   gboolean         can_go_forward;
   GHashTable      *downloads;
+  gboolean         scrollbars;
 
-  /* Offsets for async (smooth) scrolling mode */
+  /* Offsets for async scrolling mode */
   gint             offset_x;
   gint             offset_y;
   gboolean         async_scroll;
@@ -407,8 +409,10 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
         }
 
       /* Update async scrolling offset */
-      priv->offset_x += sx - priv->scroll_x;
-      priv->offset_y += sy - priv->scroll_y;
+      if (priv->offset_x)
+        priv->offset_x += sx - priv->scroll_x;
+      if (priv->offset_y)
+        priv->offset_y += sy - priv->scroll_y;
 
       /* Clamp in case document size has changed */
       if (priv->scroll_x != sx)
@@ -1137,8 +1141,12 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_string (value, clutter_mozembed_get_icon (self));
     break;
 
-  case PROP_SMOOTH_SCROLL :
-    g_value_set_boolean (value, clutter_mozembed_get_smooth_scroll (self));
+  case PROP_SCROLLBARS :
+    g_value_set_boolean (value, clutter_mozembed_get_scrollbars (self));
+    break;
+
+  case PROP_ASYNC_SCROLL :
+    g_value_set_boolean (value, clutter_mozembed_get_async_scroll (self));
     break;
 
   case PROP_DOC_WIDTH :
@@ -1210,8 +1218,12 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
     priv->spawn = g_value_get_boolean (value);
     break;
 
-  case PROP_SMOOTH_SCROLL :
-    clutter_mozembed_set_smooth_scroll (self, g_value_get_boolean (value));
+  case PROP_SCROLLBARS :
+    clutter_mozembed_set_scrollbars (self, g_value_get_boolean (value));
+    break;
+
+  case PROP_ASYNC_SCROLL :
+    clutter_mozembed_set_async_scroll (self, g_value_get_boolean (value));
     break;
 
   case PROP_SCROLL_X :
@@ -2068,7 +2080,7 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
       break;
     }
 
-  if (priv->async_scroll)
+  if (!priv->scrollbars)
     {
       /* FIXME: Maybe we shouldn't do this? */
       switch (event->direction)
@@ -2457,11 +2469,22 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                         G_PARAM_STATIC_BLURB));
 
   g_object_class_install_property (object_class,
-                                   PROP_SMOOTH_SCROLL,
-                                   g_param_spec_boolean ("smooth-scroll",
-                                                         "Smooth scrolling",
+                                   PROP_SCROLLBARS,
+                                   g_param_spec_boolean ("scrollbars",
+                                                         "Show scroll-bars",
+                                                         "Show scroll-bars.",
+                                                         TRUE,
+                                                         G_PARAM_READWRITE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_ASYNC_SCROLL,
+                                   g_param_spec_boolean ("async-scroll",
+                                                         "Async scrolling",
                                                          "Use asynchronous "
-                                                         "(smooth) scrolling.",
+                                                         "scrolling.",
                                                          FALSE,
                                                          G_PARAM_READWRITE |
                                                          G_PARAM_STATIC_NAME |
@@ -2687,6 +2710,7 @@ clutter_mozembed_init (ClutterMozEmbed *self)
                                            g_direct_equal,
                                            NULL,
                                            _destroy_download_cb);
+  priv->scrollbars = TRUE;
 
   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
 
@@ -2846,22 +2870,33 @@ clutter_mozembed_reload (ClutterMozEmbed *mozembed)
 }
 
 gboolean
-clutter_mozembed_get_smooth_scroll (ClutterMozEmbed *mozembed)
+clutter_mozembed_get_async_scroll (ClutterMozEmbed *mozembed)
 {
-  ClutterMozEmbedPrivate *priv = mozembed->priv;
-  return priv->async_scroll;
+  return mozembed->priv->async_scroll;
 }
 
 void
-clutter_mozembed_set_smooth_scroll (ClutterMozEmbed *mozembed, gboolean smooth)
+clutter_mozembed_set_async_scroll (ClutterMozEmbed *mozembed, gboolean async)
+{
+  mozembed->priv->async_scroll = async;
+}
+
+gboolean
+clutter_mozembed_get_scrollbars (ClutterMozEmbed *mozembed)
+{
+  return mozembed->priv->scrollbars;
+}
+
+void
+clutter_mozembed_set_scrollbars (ClutterMozEmbed *mozembed, gboolean show)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
-  if (priv->async_scroll != smooth)
+  if (priv->scrollbars != show)
     {
       gchar *command;
-      priv->async_scroll = smooth;
-      
+
+      priv->scrollbars = show;
       command = g_strdup_printf ("toggle-chrome %d",
                                  MOZ_HEADLESS_FLAG_SCROLLBARSON);
       send_command (mozembed, command);

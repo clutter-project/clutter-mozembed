@@ -99,8 +99,10 @@ void clutter_mozembed_refresh (ClutterMozEmbed *mozembed);
 void clutter_mozembed_reload (ClutterMozEmbed *mozembed);
 GList *clutter_mozembed_get_downloads (ClutterMozEmbed *mozembed);
 
-gboolean clutter_mozembed_get_smooth_scroll (ClutterMozEmbed *mozembed);
-void clutter_mozembed_set_smooth_scroll (ClutterMozEmbed *mozembed, gboolean smooth);
+gboolean clutter_mozembed_get_scrollbars (ClutterMozEmbed *mozembed);
+gboolean clutter_mozembed_get_async_scroll (ClutterMozEmbed *mozembed);
+void clutter_mozembed_set_scrollbars (ClutterMozEmbed *mozembed, gboolean show);
+void clutter_mozembed_set_async_scroll (ClutterMozEmbed *mozembed, gboolean async);
 void clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy);
 
 gboolean clutter_mozembed_is_loading (ClutterMozEmbed *mozembed);
