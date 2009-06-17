@@ -480,9 +480,9 @@ clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
 
   moz_headless_set_surface (headless, NULL, 0, 0, 0);
   moz_headless_set_size (headless,
-                         priv->surface_width - 0,
-                         priv->surface_height - 0);
-  
+                         priv->surface_width,
+                         priv->surface_height);
+
   if (priv->mmap_start)
     munmap (priv->mmap_start, priv->mmap_length);
 
@@ -490,7 +490,7 @@ clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
   ftruncate (priv->shm_fd, priv->mmap_length);
   priv->mmap_start = mmap (NULL, priv->mmap_length, PROT_READ | PROT_WRITE,
                            MAP_SHARED, priv->shm_fd, 0);
-  
+
   moz_headless_set_surface (headless, priv->mmap_start,
                             priv->surface_width, priv->surface_height,
                             priv->surface_width * 4);
@@ -1188,6 +1188,14 @@ clutter_mozheadless_new (void)
   return g_object_new (CLUTTER_TYPE_MOZHEADLESS, NULL);
 }
 
+#ifdef BREAK_ON_EXIT
+static void
+atexit_func ()
+{
+  G_BREAKPOINT ();
+}
+#endif
+
 int
 main (int argc, char **argv)
 {
@@ -1202,6 +1210,10 @@ main (int argc, char **argv)
       printf ("Usage: %s <output pipe> <input pipe> <shm name>\n", argv[0]);
       return 1;
     }
+
+#ifdef BREAK_ON_EXIT
+  atexit (atexit_func);
+#endif
 
   g_type_init ();
 
