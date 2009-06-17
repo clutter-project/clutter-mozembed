@@ -84,6 +84,12 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozheadless-prefs.cc \
 	clutter-mozheadless-prefs.h
 
+if OVERRIDE_COOKIES
+clutter_mozheadless_SOURCES += \
+	clutter-mozheadless-cookies.cc \
+	clutter-mozheadless-cookies.h
+endif
+
 lib_LTLIBRARIES = libcluttermozembed.la
 
 libcluttermozembed_la_LIBADD = \

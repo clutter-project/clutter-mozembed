@@ -13,6 +13,7 @@ AC_PROG_LIBTOOL
 
 PKG_PROG_PKG_CONFIG()
 
+
 AC_ARG_ENABLE(plugins,
       AS_HELP_STRING([--enable-plugins], 
                      ["Support displaying mozilla plugins"]),
@@ -24,6 +25,20 @@ PKG_CHECK_MODULES(GTK, gtk+-2.0)
 AC_DEFINE([SUPPORT_PLUGINS], [], [Enables support for mozilla plugins])
 fi
 AM_CONDITIONAL([SUPPORT_PLUGINS], [test "x$ENABLED_PLUGINS" = "xyes"])
+
+
+AC_ARG_ENABLE(cookies,
+	AS_HELP_STRING([--enable-cookies],
+		       ["Override the default mozilla cookies implementation"]),
+	[ENABLED_COOKIES=$enableval],
+	[cookies=no])
+
+if test "x$ENABLED_COOKIES" = "xyes"; then
+PKG_CHECK_MODULES(SQLITE, sqlite3)
+AC_DEFINE([OVERRIDE_COOKIES], [], [Overrides the default mozilla cookies implementation])
+fi
+AM_CONDITIONAL([OVERRIDE_COOKIES], [test "x$ENABLED_COOKIES" = "xyes"])
+
 
 PKG_CHECK_MODULES(GOBJECT, gobject-2.0 >= 2.12.0 gio-2.0)
 PKG_CHECK_MODULES(GTHREAD, gthread-2.0)
