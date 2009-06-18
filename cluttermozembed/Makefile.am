@@ -82,13 +82,9 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozheadless-history.cc \
 	clutter-mozheadless-history.h \
 	clutter-mozheadless-prefs.cc \
-	clutter-mozheadless-prefs.h
-
-if OVERRIDE_COOKIES
-clutter_mozheadless_SOURCES += \
+	clutter-mozheadless-prefs.h \
 	clutter-mozheadless-cookies.cc \
 	clutter-mozheadless-cookies.h
-endif
 
 lib_LTLIBRARIES = libcluttermozembed.la
 
