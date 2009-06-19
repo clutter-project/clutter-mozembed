@@ -232,19 +232,19 @@ HeadlessPrefService::ReadUserPrefs(nsIFile *aFile)
 {
   gboolean result;
   GError *error = NULL;
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   char *file = _path_from_nsifile (aFile);
 
   // g_debug ("ReadUserPrefs(%s)", file);
   result = mhs_prefs_read_user (mMhsPrefs,
                                 file,
-                                &ns_result,
                                 &error);
 
   NS_Free (file);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error reading user prefs: %s", error->message);
       g_error_free (error);
     }
@@ -255,15 +255,16 @@ HeadlessPrefService::ReadUserPrefs(nsIFile *aFile)
 NS_IMETHODIMP
 HeadlessPrefService::ResetPrefs()
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
 
   // g_debug ("ResetPrefs");
-  result = mhs_prefs_reset (mMhsPrefs, &ns_result, &error);
+  result = mhs_prefs_reset (mMhsPrefs, &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error resetting prefs: %s", error->message);
       g_error_free (error);
     }
@@ -274,17 +275,17 @@ HeadlessPrefService::ResetPrefs()
 NS_IMETHODIMP
 HeadlessPrefService::ResetUserPrefs()
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
 
   // g_debug ("ResetUserPrefs");
   result = mhs_prefs_reset_user (mMhsPrefs,
-                                 &ns_result,
                                  &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error resetting user prefs: %s", error->message);
       g_error_free (error);
     }
@@ -295,7 +296,7 @@ HeadlessPrefService::ResetUserPrefs()
 NS_IMETHODIMP
 HeadlessPrefService::SavePrefFile(nsIFile *aFile)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
   char *file = _path_from_nsifile (aFile);
@@ -303,13 +304,13 @@ HeadlessPrefService::SavePrefFile(nsIFile *aFile)
   // g_debug ("SavePrefFile(%s)", file);
   result = mhs_prefs_save_pref_file (mMhsPrefs,
                                      file,
-                                     &ns_result,
                                      &error);
 
   NS_Free (file);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error saving prefs file: %s", error->message);
       g_error_free (error);
     }
@@ -322,7 +323,7 @@ HeadlessPrefService::GetBranch(const char     *aPrefRoot,
                                nsIPrefBranch **_retval,
                                PRBool          aDefault)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gint id;
   gboolean result;
   GError *error = NULL;
@@ -336,21 +337,20 @@ HeadlessPrefService::GetBranch(const char     *aPrefRoot,
     result = mhs_prefs_get_default_branch (mMhsPrefs,
                                            (const gchar *)aPrefRoot,
                                            &id,
-                                           &ns_result,
                                            &error);
   else
     result = mhs_prefs_get_branch (mMhsPrefs,
                                    (const gchar *)aPrefRoot,
                                    &id,
-                                   &ns_result,
                                    &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       /*g_warning ("Error getting branch: %s", error->message);*/
       g_error_free (error);
     }
-  else if (NS_SUCCEEDED (ns_result))
+  else
     {
       HeadlessPrefBranch *branch = new HeadlessPrefBranch (mMhsPrefs,
                                                            id,
@@ -394,13 +394,11 @@ HeadlessPrefService::AddBranch(HeadlessPrefBranch *aBranch, gint aId)
 void
 HeadlessPrefService::ReleaseBranch(gint aId)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
   gboolean result;
   GError *error = NULL;
 
   result = mhs_prefs_release_branch (mMhsPrefs,
                                      aId,
-                                     &ns_result,
                                      &error);
 
   if (!result)
@@ -470,7 +468,7 @@ HeadlessPrefBranch::GetRoot(char **aRoot)
 NS_IMETHODIMP
 HeadlessPrefBranch::GetPrefType(const char *aPrefName, PRInt32 *_retval)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
   gint type;
@@ -480,15 +478,15 @@ HeadlessPrefBranch::GetPrefType(const char *aPrefName, PRInt32 *_retval)
                                       mId,
                                       aPrefName,
                                       &type,
-                                      &ns_result,
                                       &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       /*g_warning ("Error getting branch type: %s", error->message);*/
       g_error_free (error);
     }
-  else if (NS_SUCCEEDED (ns_result))
+  else
     *_retval = type;
 
   return (nsresult)ns_result;
@@ -497,7 +495,7 @@ HeadlessPrefBranch::GetPrefType(const char *aPrefName, PRInt32 *_retval)
 NS_IMETHODIMP
 HeadlessPrefBranch::ClearUserPref(const char *aPrefName)
 {
-/*  guint ns_result = NS_ERROR_UNEXPECTED;
+/*  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
 
@@ -505,11 +503,11 @@ HeadlessPrefBranch::ClearUserPref(const char *aPrefName)
   result = mhs_prefs_branch_clear_user (mMhsPrefs,
                                         mId,
                                         aPrefName,
-                                        &ns_result,
                                         &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error clearing user pref (%s): %s",
                  aPrefName, error->message);
       g_error_free (error);
@@ -523,7 +521,7 @@ HeadlessPrefBranch::ClearUserPref(const char *aPrefName)
 NS_IMETHODIMP
 HeadlessPrefBranch::PrefHasUserValue(const char *aPrefName, PRBool *_retval)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gboolean result, has_value;
   GError *error = NULL;
 
@@ -532,16 +530,16 @@ HeadlessPrefBranch::PrefHasUserValue(const char *aPrefName, PRBool *_retval)
                                             mId,
                                             aPrefName,
                                             &has_value,
-                                            &ns_result,
                                             &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error getting branch has-user-value (%s): %s",
                  aPrefName, error->message);
       g_error_free (error);
     }
-  else if (NS_SUCCEEDED (ns_result))
+  else
     *_retval = has_value;
 
   return (nsresult)ns_result;
@@ -550,7 +548,7 @@ HeadlessPrefBranch::PrefHasUserValue(const char *aPrefName, PRBool *_retval)
 NS_IMETHODIMP
 HeadlessPrefBranch::DeleteBranch(const char *aStartingAt)
 {
-/*  guint ns_result = NS_ERROR_UNEXPECTED;
+/*  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
 
@@ -558,11 +556,11 @@ HeadlessPrefBranch::DeleteBranch(const char *aStartingAt)
   result = mhs_prefs_branch_delete (mMhsPrefs,
                                     mId,
                                     aStartingAt,
-                                    &ns_result,
                                     &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error deleting branch (%s): %s",
                  aStartingAt, error->message);
       g_error_free (error);
@@ -575,7 +573,7 @@ HeadlessPrefBranch::DeleteBranch(const char *aStartingAt)
 NS_IMETHODIMP
 HeadlessPrefBranch::ResetBranch(const char *aStartingAt)
 {
-/*  guint ns_result = NS_ERROR_UNEXPECTED;
+/*  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
 
@@ -583,11 +581,11 @@ HeadlessPrefBranch::ResetBranch(const char *aStartingAt)
   result = mhs_prefs_branch_reset (mMhsPrefs,
                                    mId,
                                    aStartingAt,
-                                   &ns_result,
                                    &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error resetting branch (%s): %s",
                  aStartingAt, error->message);
       g_error_free (error);
@@ -602,7 +600,7 @@ HeadlessPrefBranch::GetChildList(const char   *aStartingAt,
                                  PRUint32     *aCount,
                                  char       ***aChildArray)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gchar **child_array = NULL;
   GError *error = NULL;
   gboolean result;
@@ -616,15 +614,15 @@ HeadlessPrefBranch::GetChildList(const char   *aStartingAt,
                                             aStartingAt,
                                             &count,
                                             &child_array,
-                                            &ns_result,
                                             &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error getting branch child list: %s", error->message);
       g_error_free (error);
     }
-  else if (NS_SUCCEEDED (ns_result) && child_array && count)
+  else if (child_array && count)
     {
       *aCount = count;
       *aChildArray = (char **)nsMemory::Alloc((*aCount) * sizeof(char *));
@@ -642,7 +640,7 @@ HeadlessPrefBranch::GetChildList(const char   *aStartingAt,
 NS_IMETHODIMP
 HeadlessPrefBranch::LockPref(const char *aPrefName)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   GError *error = NULL;
   gboolean result;
 
@@ -650,11 +648,11 @@ HeadlessPrefBranch::LockPref(const char *aPrefName)
   result = mhs_prefs_branch_lock (mMhsPrefs,
                                   mId,
                                   aPrefName,
-                                  &ns_result,
                                   &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error locking branch: %s", error->message);
       g_error_free (error);
     }
@@ -665,7 +663,7 @@ HeadlessPrefBranch::LockPref(const char *aPrefName)
 NS_IMETHODIMP
 HeadlessPrefBranch::PrefIsLocked(const char *aPrefName, PRBool *_retval)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gboolean result, value;
   GError *error = NULL;
 
@@ -674,15 +672,15 @@ HeadlessPrefBranch::PrefIsLocked(const char *aPrefName, PRBool *_retval)
                                        mId,
                                        aPrefName,
                                        &value,
-                                       &ns_result,
                                        &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error getting branch is-locked state: %s", error->message);
       g_error_free (error);
     }
-  else if (NS_SUCCEEDED (ns_result))
+  else
     *_retval = value;
 
   return (nsresult)ns_result;
@@ -691,7 +689,7 @@ HeadlessPrefBranch::PrefIsLocked(const char *aPrefName, PRBool *_retval)
 NS_IMETHODIMP
 HeadlessPrefBranch::UnlockPref(const char *aPrefName)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
 
@@ -699,11 +697,11 @@ HeadlessPrefBranch::UnlockPref(const char *aPrefName)
   result = mhs_prefs_branch_unlock (mMhsPrefs,
                                     mId,
                                     aPrefName,
-                                    &ns_result,
                                     &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error unlocking branch: %s", error->message);
       g_error_free (error);
     }
@@ -714,7 +712,7 @@ HeadlessPrefBranch::UnlockPref(const char *aPrefName)
 NS_IMETHODIMP
 HeadlessPrefBranch::GetBoolPref(const char *aPrefName, PRBool *_retval)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gboolean result, value;
   GError *error = NULL;
 
@@ -723,16 +721,16 @@ HeadlessPrefBranch::GetBoolPref(const char *aPrefName, PRBool *_retval)
                                       mId,
                                       aPrefName,
                                       &value,
-                                      &ns_result,
                                       &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       /*g_warning ("Error getting branch boolean value (%s): %s",
                  name, error->message);*/
       g_error_free (error);
     }
-  else if (NS_SUCCEEDED (ns_result))
+  else
     *_retval = value;
 
   return (nsresult)ns_result;
@@ -741,7 +739,7 @@ HeadlessPrefBranch::GetBoolPref(const char *aPrefName, PRBool *_retval)
 NS_IMETHODIMP
 HeadlessPrefBranch::SetBoolPref(const char *aPrefName, PRInt32 aValue)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   GError *error = NULL;
   gboolean result;
 
@@ -750,11 +748,11 @@ HeadlessPrefBranch::SetBoolPref(const char *aPrefName, PRInt32 aValue)
                                       mId,
                                       aPrefName,
                                       (gboolean)aValue,
-                                      &ns_result,
                                       &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error setting branch boolean value (%s): %s",
                  aPrefName, error->message);
       g_error_free (error);
@@ -766,7 +764,7 @@ HeadlessPrefBranch::SetBoolPref(const char *aPrefName, PRInt32 aValue)
 NS_IMETHODIMP
 HeadlessPrefBranch::GetCharPref(const char *aPrefName, char **_retval)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   GError *error = NULL;
   gboolean result;
   gchar *value;
@@ -776,16 +774,16 @@ HeadlessPrefBranch::GetCharPref(const char *aPrefName, char **_retval)
                                       mId,
                                       aPrefName,
                                       &value,
-                                      &ns_result,
                                       &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       /*g_warning ("Error getting branch char value (%s): %s",
                  name, error->message);*/
       g_error_free (error);
     }
-  else if (NS_SUCCEEDED (ns_result))
+  else
     {
       *_retval = value ? NS_strdup (value) : nsnull;
       g_free (value);
@@ -797,7 +795,7 @@ HeadlessPrefBranch::GetCharPref(const char *aPrefName, char **_retval)
 NS_IMETHODIMP
 HeadlessPrefBranch::SetCharPref(const char *aPrefName, const char *aValue)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   GError *error = NULL;
   gboolean result;
 
@@ -806,11 +804,11 @@ HeadlessPrefBranch::SetCharPref(const char *aPrefName, const char *aValue)
                                       mId,
                                       aPrefName,
                                       (const gchar *)aValue,
-                                      &ns_result,
                                       &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error setting branch char value (%s): %s",
                  aPrefName, error->message);
       g_error_free (error);
@@ -822,7 +820,7 @@ HeadlessPrefBranch::SetCharPref(const char *aPrefName, const char *aValue)
 NS_IMETHODIMP
 HeadlessPrefBranch::GetIntPref(const char *aPrefName, PRInt32 *_retval)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   GError *error = NULL;
   gboolean result;
   gint value;
@@ -832,16 +830,16 @@ HeadlessPrefBranch::GetIntPref(const char *aPrefName, PRInt32 *_retval)
                                      mId,
                                      aPrefName,
                                      &value,
-                                     &ns_result,
                                      &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       /*g_warning ("Error getting branch int value (%s): %s",
                  name, error->message);*/
       g_error_free (error);
     }
-  else if (NS_SUCCEEDED (ns_result))
+  else
     *_retval = value;
 
   return (nsresult)ns_result;
@@ -850,7 +848,7 @@ HeadlessPrefBranch::GetIntPref(const char *aPrefName, PRInt32 *_retval)
 NS_IMETHODIMP
 HeadlessPrefBranch::SetIntPref(const char *aPrefName, PRInt32 aValue)
 {
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
 
@@ -859,11 +857,11 @@ HeadlessPrefBranch::SetIntPref(const char *aPrefName, PRInt32 aValue)
                                      mId,
                                      aPrefName,
                                      (gint)aValue,
-                                     &ns_result,
                                      &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error setting branch int value (%s): %s",
                  aPrefName, error->message);
       g_error_free (error);
@@ -1156,7 +1154,7 @@ HeadlessPrefBranch::AddObserver(const char  *aDomain,
 
   mObservers->AppendElement(pCallback);
 
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
   GError *error = NULL;
   gboolean result;
 
@@ -1164,11 +1162,11 @@ HeadlessPrefBranch::AddObserver(const char  *aDomain,
   result = mhs_prefs_branch_add_observer (mMhsPrefs,
                                           mId,
                                           (const gchar *)aDomain,
-                                          &ns_result,
                                           &error);
 
   if (!result)
     {
+      ns_result = mhs_error_to_nsresult (error);
       g_warning ("Error adding observer: %s", error->message);
       g_error_free (error);
     }
@@ -1201,7 +1199,7 @@ HeadlessPrefBranch::RemoveObserver(const char *aDomain, nsIObserver *aObserver)
     pCallback = NULL;
   }
 
-  guint ns_result = NS_ERROR_UNEXPECTED;
+  guint ns_result = NS_OK;
 
   if (pCallback) {
     gboolean result;
@@ -1212,11 +1210,11 @@ HeadlessPrefBranch::RemoveObserver(const char *aDomain, nsIObserver *aObserver)
     result = mhs_prefs_branch_remove_observer (mMhsPrefs,
                                                mId,
                                                (const gchar *)aDomain,
-                                               &ns_result,
                                                &error);
 
     if (!result)
       {
+        ns_result = mhs_error_to_nsresult (error);
         g_warning ("Error removing observer: %s", error->message);
         g_error_free (error);
       }
