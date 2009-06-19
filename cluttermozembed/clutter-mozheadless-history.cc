@@ -151,9 +151,10 @@ HeadlessGlobalHistory::AddURI(nsIURI *aURI,
                          &error);
   if (!result)
     {
+      nsresult rv = mhs_error_to_nsresult (error);
       g_warning ("Error adding URI: %s", error->message);
       g_error_free (error);
-      return NS_ERROR_UNEXPECTED;
+      return rv;
     }
 
   return NS_OK;
@@ -176,9 +177,10 @@ HeadlessGlobalHistory::IsVisited(nsIURI *aURI, PRBool *_retval)
                             &error);
   if (!result)
     {
+      nsresult rv = mhs_error_to_nsresult (error);
       g_warning ("Error checking is-visited: %s", error->message);
       g_error_free (error);
-      return NS_ERROR_UNEXPECTED;
+      return rv;
     }
   else
     *_retval = is_visited;
@@ -204,9 +206,9 @@ HeadlessGlobalHistory::SetPageTitle(nsIURI *aURI, const nsAString &aTitle)
                                 &error);
   if (!result)
     {
+      rv = mhs_error_to_nsresult (error);
       g_warning ("Error setting page title: %s", error->message);
       g_error_free (error);
-      rv = NS_ERROR_UNEXPECTED;
     }
   else
     rv = NS_OK;
