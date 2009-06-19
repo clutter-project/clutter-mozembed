@@ -1222,13 +1222,11 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
     break;
 
   case PROP_SCROLL_X :
-    clutter_mozembed_scroll_by (self, g_value_get_int (value) -
-                                      (priv->scroll_x + priv->offset_y), 0);
+    clutter_mozembed_scroll_to (self, g_value_get_int (value), priv->scroll_y);
     break;
 
   case PROP_SCROLL_Y :
-    clutter_mozembed_scroll_by (self, 0, g_value_get_int (value) -
-                                         (priv->scroll_y + priv->offset_x));
+    clutter_mozembed_scroll_to (self, priv->scroll_x, g_value_get_int (value));
     break;
 
   case PROP_POLL_TIMEOUT :
@@ -2920,7 +2918,30 @@ clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy)
   priv->offset_y -= dy;
 
   clamp_offset (mozembed);
-  clutter_actor_queue_redraw (CLUTTER_ACTOR (mozembed));
+
+  if (priv->async_scroll)
+    clutter_actor_queue_redraw (CLUTTER_ACTOR (mozembed));
+}
+
+void
+clutter_mozembed_scroll_to (ClutterMozEmbed *mozembed, gint x, gint y)
+{
+  gchar *command;
+
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  command = g_strdup_printf ("scroll-to %d %d", x, y);
+  send_command (mozembed, command);
+  g_free (command);
+
+  /* TODO: Check that these two lines are correct */
+  priv->offset_x -= x - (priv->scroll_x + priv->offset_y);
+  priv->offset_y -= y - (priv->scroll_y + priv->offset_y);
+
+  clamp_offset (mozembed);
+
+  if (priv->async_scroll)
+    clutter_actor_queue_redraw (CLUTTER_ACTOR (mozembed));
 }
 
 gboolean

@@ -194,6 +194,7 @@ net_stop_cb (ClutterMozHeadless *headless)
 static gboolean
 scroll_cb (MozHeadless *headless, MozHeadlessRect *rect, gint dx, gint dy)
 {
+  /*g_debug ("Scroll %d, %d", dx, dy);*/
   return FALSE;
 }
 
@@ -649,6 +650,19 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
       dy = atoi (params[1]);
       
       moz_headless_scroll (headless, dx, dy);
+    }
+  else if (g_str_equal (command, "scroll-to"))
+    {
+      gint x, y;
+      gchar *params[2];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      x = atoi (params[0]);
+      y = atoi (params[1]);
+
+      moz_headless_set_scroll_pos (headless, x, y);
     }
   else if (g_str_equal (command, "can-go-back?"))
     {

@@ -105,6 +105,7 @@ gboolean clutter_mozembed_get_async_scroll (ClutterMozEmbed *mozembed);
 void clutter_mozembed_set_scrollbars (ClutterMozEmbed *mozembed, gboolean show);
 void clutter_mozembed_set_async_scroll (ClutterMozEmbed *mozembed, gboolean async);
 void clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy);
+void clutter_mozembed_scroll_to (ClutterMozEmbed *mozembed, gint x, gint y);
 
 gboolean clutter_mozembed_is_loading (ClutterMozEmbed *mozembed);
 gdouble clutter_mozembed_get_progress (ClutterMozEmbed *mozembed);
