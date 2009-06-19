@@ -2,6 +2,9 @@
  * ClutterMozHeadless; A headless Mozilla renderer
  * Copyright (c) 2009, Intel Corporation.
  *
+ * Portions of this file are Copyright (c) 1998 Netscape
+ * Communications Corporation.
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU Lesser General Public License,
  * version 2.1, as published by the Free Software Foundation.
