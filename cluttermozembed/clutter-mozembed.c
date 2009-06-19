@@ -542,25 +542,20 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
 
-      new_window = g_object_new (CLUTTER_TYPE_MOZEMBED, "spawn", FALSE, NULL);
+      new_window = NULL;
 
       /* Find out if the new window is received */
-      g_object_ref_sink (new_window);
-      g_object_add_weak_pointer (G_OBJECT (new_window), (gpointer)&new_window);
       g_signal_emit (self, signals[NEW_WINDOW], 0,
-                     new_window, (guint)atoi (params[0]));
-#ifdef SUPPORT_PLUGINS
-      clutter_mozembed_init_viewport (new_window);
-#endif
-      g_object_unref (new_window);
+                     &new_window, (guint)atoi (params[0]));
 
       /* If it is, send its details to the backend */
       if (new_window)
         {
           gchar *output_file, *input_file, *shm_name, *command;
 
-          g_object_remove_weak_pointer (G_OBJECT (new_window),
-                                        (gpointer)&new_window);
+#ifdef SUPPORT_PLUGINS
+          clutter_mozembed_init_viewport (new_window);
+#endif
 
           output_file = input_file = shm_name = NULL;
           g_object_get (G_OBJECT (new_window),
@@ -2644,8 +2639,8 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   G_SIGNAL_RUN_LAST,
                   G_STRUCT_OFFSET (ClutterMozEmbedClass, new_window),
                   NULL, NULL,
-                  _clutter_mozembed_marshal_VOID__OBJECT_UINT,
-                  G_TYPE_NONE, 2, CLUTTER_TYPE_MOZEMBED, G_TYPE_UINT);
+                  _clutter_mozembed_marshal_VOID__POINTER_UINT,
+                  G_TYPE_NONE, 2, G_TYPE_POINTER, G_TYPE_UINT);
 
   signals[CLOSED] =
     g_signal_new ("closed",
@@ -2748,6 +2743,12 @@ clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
   g_free (command);
   
   return CLUTTER_ACTOR (mozembed);
+}
+
+ClutterActor *
+clutter_mozembed_new_for_new_window ()
+{
+  return g_object_new (CLUTTER_TYPE_MOZEMBED, "spawn", FALSE, NULL);
 }
 
 ClutterActor *

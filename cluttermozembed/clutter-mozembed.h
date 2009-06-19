@@ -66,9 +66,9 @@ typedef struct {
   void (* net_start)    (ClutterMozEmbed *mozembed);
   void (* net_stop)     (ClutterMozEmbed *mozembed);
   void (* crashed)      (ClutterMozEmbed *mozembed);
-  void (* new_window)   (ClutterMozEmbed *mozembed,
-                         ClutterMozEmbed *new_mozembed,
-                         guint            chromeflags);
+  void (* new_window)   (ClutterMozEmbed  *mozembed,
+                         ClutterMozEmbed **new_mozembed,
+                         guint             chromeflags);
   void (* closed)       (ClutterMozEmbed *mozembed);
   void (* link_message) (ClutterMozEmbed *mozembed, const gchar *message);
   void (* size_request) (ClutterMozEmbed *mozembed, gint width, gint height);
@@ -80,6 +80,7 @@ GType clutter_mozembed_get_type (void);
 
 ClutterActor *clutter_mozembed_new (void);
 ClutterActor *clutter_mozembed_new_with_parent (ClutterMozEmbed *parent);
+ClutterActor *clutter_mozembed_new_for_new_window (void);
 ClutterActor *clutter_mozembed_new_view (void);
 
 void clutter_mozembed_connect_view (ClutterMozEmbed *mozembed,
