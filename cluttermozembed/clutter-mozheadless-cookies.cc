@@ -30,12 +30,15 @@
 #include <nsIObserver.h>
 #include <nsIObserverService.h>
 #include <nsISupportsPrimitives.h>
+#include <nsIURI.h>
 #include <nsCOMPtr.h>
 #include <nsMemory.h>
 #include <nsServiceManagerUtils.h>
 #include <nsWeakReference.h>
 #include <nsStringGlue.h>
+#include <nsNetUtil.h>
 #include <nsCRTGlue.h>
+#include <mhs/mhs.h>
 
 #include "clutter-mozheadless.h"
 #include "clutter-mozheadless-cookies.h"
@@ -55,7 +58,6 @@ class HeadlessCookie : public nsICookie2
       g_free (mValue);
       g_free (mHost);
       g_free (mPath);
-      g_free (mEnd);
     }
 
  private:
@@ -63,10 +65,8 @@ class HeadlessCookie : public nsICookie2
                  gchar   *aValue,
                  gchar   *aHost,
                  gchar   *aPath,
-                 gchar   *aEnd,
                  PRInt64  aExpiry,
-                 PRInt64  aLastAccessed,
-                 PRInt64  aCreationID,
+                 PRInt64  aCreationTime,
                  PRBool   aIsSession,
                  PRBool   aIsSecure,
                  PRBool   aIsHttpOnly)
@@ -74,10 +74,8 @@ class HeadlessCookie : public nsICookie2
     , mValue (aValue)
     , mHost (aHost)
     , mPath (aPath)
-    , mEnd (aEnd)
     , mExpiry (aExpiry)
-    , mLastAccessed (aLastAccessed)
-    , mCreationID (aCreationID)
+    , mCreationTime (aCreationTime)
     , mIsSession (aIsSession != PR_FALSE)
     , mIsSecure (aIsSecure != PR_FALSE)
     , mIsHttpOnly (aIsHttpOnly != PR_FALSE)
@@ -89,10 +87,8 @@ class HeadlessCookie : public nsICookie2
   gchar        *mValue;
   gchar        *mHost;
   gchar        *mPath;
-  gchar        *mEnd;
   PRInt64       mExpiry;
-  PRInt64       mLastAccessed;
-  PRInt64       mCreationID;
+  PRInt64       mCreationTime;
   PRPackedBool  mIsSession;
   PRPackedBool  mIsSecure;
   PRPackedBool  mIsHttpOnly;
@@ -115,6 +111,9 @@ class HeadlessCookieService : public nsICookieService,
   NS_DECL_NSICOOKIEMANAGER2
 
   static HeadlessCookieService *sHeadlessCookieService;
+
+private:
+  MhsCookies                   *mMhsCookies;
 };
 
 G_END_DECLS
@@ -130,55 +129,66 @@ NS_IMPL_ISUPPORTS2(HeadlessCookie,
 NS_IMETHODIMP
 HeadlessCookie::GetName (nsACString &aName)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  aName = mName;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetValue (nsACString &aValue)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  aValue = mValue;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetIsDomain (PRBool *aIsDomain)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  *aIsDomain = (*mHost == '.');
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetHost (nsACString &aHost)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  aHost = mHost;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetPath (nsACString &aPath)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  aPath = mPath;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetIsSecure (PRBool *aIsSecure)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  *aIsSecure = mIsSecure;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetExpires (PRUint64 *aExpires)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  *aExpires = mExpiry;
+  return NS_OK;
 }
 
+// Deprecated function
 NS_IMETHODIMP
 HeadlessCookie::GetStatus (nsCookieStatus *aStatus)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  *aStatus = STATUS_UNKNOWN;
+  return NS_OK;
 }
 
+// Deprecated function
 NS_IMETHODIMP
 HeadlessCookie::GetPolicy (nsCookiePolicy *aPolicy)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  *aPolicy = POLICY_UNKNOWN;
+  return NS_OK;
 }
 
 ///////////////////////////////
@@ -188,31 +198,40 @@ HeadlessCookie::GetPolicy (nsCookiePolicy *aPolicy)
 NS_IMETHODIMP
 HeadlessCookie::GetRawHost (nsACString &aRawHost)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  if (*mHost == '.')
+    aRawHost = nsDependentCString (mHost + 1);
+  else
+    aRawHost = nsDependentCString (mHost, (PRUint32)((mPath - 1) - mHost));
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetIsSession (PRBool *aIsSession)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  *aIsSession = mIsSession;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetExpiry (PRInt64 *aExpiry)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  *aExpiry = mExpiry;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetIsHttpOnly (PRBool *aIsHttpOnly)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  *aIsHttpOnly = mIsHttpOnly;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 HeadlessCookie::GetCreationTime (PRInt64 *aCreationTime)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  *aCreationTime = mCreationTime;
+  return NS_OK;
 }
 
 ///////////////////////////
@@ -221,10 +240,16 @@ HeadlessCookie::GetCreationTime (PRInt64 *aCreationTime)
 
 HeadlessCookieService::HeadlessCookieService(void)
 {
+  mMhsCookies = mhs_cookies_new ();
 }
 
 HeadlessCookieService::~HeadlessCookieService()
 {
+  if (mMhsCookies) {
+    g_object_unref (mMhsCookies);
+    mMhsCookies = NULL;
+  }
+
   if (sHeadlessCookieService == this)
     sHeadlessCookieService = nsnull;
 }
@@ -270,7 +295,31 @@ HeadlessCookieService::GetCookieString (nsIURI      *aURI,
                                         nsIChannel  *aChannel,
                                         char       **_retval NS_OUTPARAM)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  gboolean result;
+  nsCAutoString uri;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+
+  nsresult rv = aURI->GetSpec (uri);
+  if (NS_FAILED (rv))
+    return rv;
+
+  gchar *cookie = NULL;
+  result = mhs_cookies_get_cookie_string (mMhsCookies,
+                                          uri.get (),
+                                          &cookie,
+                                          &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error getting cookie string: %s", error->message);
+    g_error_free (error);
+  } else {
+    *_retval = cookie ? NS_strdup (cookie) : nsnull;
+    g_free (cookie);
+  }
+
+  return (nsresult)ns_result;
 }
 
 NS_IMETHODIMP
@@ -279,7 +328,36 @@ HeadlessCookieService::GetCookieStringFromHttp (nsIURI      *aURI,
                                                 nsIChannel  *aChannel,
                                                 char       **_retval NS_OUTPARAM)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  gboolean result;
+  nsCAutoString uri, first_uri;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+
+  nsresult rv = aURI->GetSpec (uri);
+  if (NS_FAILED (rv))
+    return rv;
+
+  rv = aFirstURI->GetSpec (first_uri);
+  if (NS_FAILED (rv))
+    return rv;
+
+  gchar *cookie = NULL;
+  result = mhs_cookies_get_cookie_string_from_http (mMhsCookies,
+                                                    uri.get (),
+                                                    first_uri.get (),
+                                                    &cookie,
+                                                    &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error getting cookie string from http: %s", error->message);
+    g_error_free (error);
+  } else {
+    *_retval = cookie ? NS_strdup (cookie) : nsnull;
+    g_free (cookie);
+  }
+
+  return (nsresult)ns_result;
 }
 
 NS_IMETHODIMP
@@ -288,7 +366,27 @@ HeadlessCookieService::SetCookieString (nsIURI     *aURI,
                                         const char *aCookie,
                                         nsIChannel *aChannel)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  gboolean result;
+  nsCAutoString uri;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+
+  nsresult rv = aURI->GetSpec (uri);
+  if (NS_FAILED (rv))
+    return rv;
+
+  result = mhs_cookies_set_cookie_string (mMhsCookies,
+                                          uri.get (),
+                                          aCookie,
+                                          &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error setting cookie string: %s", error->message);
+    g_error_free (error);
+  }
+
+  return (nsresult)ns_result;
 }
 
 NS_IMETHODIMP
@@ -299,7 +397,33 @@ HeadlessCookieService::SetCookieStringFromHttp (nsIURI     *aURI,
                                                 const char *aServerTime,
                                                 nsIChannel *aChannel)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  gboolean result;
+  nsCAutoString uri, first_uri;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+
+  nsresult rv = aURI->GetSpec (uri);
+  if (NS_FAILED (rv))
+    return rv;
+
+  rv = aFirstURI->GetSpec (first_uri);
+  if (NS_FAILED (rv))
+    return rv;
+
+  result = mhs_cookies_set_cookie_string_from_http (mMhsCookies,
+                                                    uri.get (),
+                                                    first_uri.get (),
+                                                    aCookie,
+                                                    aServerTime,
+                                                    &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error setting cookie string from http: %s", error->message);
+    g_error_free (error);
+  }
+
+  return (nsresult)ns_result;
 }
 
 /////////////////////////////////////

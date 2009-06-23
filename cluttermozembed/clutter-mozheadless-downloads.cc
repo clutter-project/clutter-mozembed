@@ -36,7 +36,6 @@
 
 #include "clutter-mozheadless-downloads.h"
 #include <moz-headless.h>
-#include <mhs/mhs.h>
 
 class HeadlessDownloads : public nsIHelperAppLauncherDialog,
                           public nsIWebProgressListener2 {
