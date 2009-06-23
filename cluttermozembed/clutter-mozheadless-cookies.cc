@@ -31,6 +31,8 @@
 #include <nsIObserverService.h>
 #include <nsISupportsPrimitives.h>
 #include <nsIURI.h>
+#include <nsArrayEnumerator.h>
+#include <nsCOMArray.h>
 #include <nsCOMPtr.h>
 #include <nsMemory.h>
 #include <nsServiceManagerUtils.h>
@@ -60,7 +62,6 @@ class HeadlessCookie : public nsICookie2
       g_free (mPath);
     }
 
- private:
   HeadlessCookie(gchar   *aName,
                  gchar   *aValue,
                  gchar   *aHost,
@@ -82,7 +83,7 @@ class HeadlessCookie : public nsICookie2
     {
     }
 
- protected:
+ private:
   gchar        *mName;
   gchar        *mValue;
   gchar        *mHost;
@@ -433,13 +434,121 @@ HeadlessCookieService::SetCookieStringFromHttp (nsIURI     *aURI,
 NS_IMETHODIMP
 HeadlessCookieService::RemoveAll ()
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  gboolean result;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+
+  result = mhs_cookies_remove_all (mMhsCookies,
+                                   &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error removing all cookies: %s", error->message);
+    g_error_free (error);
+  }
+
+  return (nsresult)ns_result;
 }
 
 NS_IMETHODIMP
 HeadlessCookieService::GetEnumerator (nsISimpleEnumerator **aEnumerator)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  gboolean result;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+  GPtrArray *ptr_array = NULL;
+
+  result = mhs_cookies_get_all (mMhsCookies,
+                                &ptr_array,
+                                &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error getting all cookies: %s", error->message);
+    g_error_free (error);
+  } else if (ptr_array) {
+    nsCOMArray<nsICookie> cookies (ptr_array->len);
+
+    for (guint i = 0; i < ptr_array->len; i++) {
+      gchar *name, *value, *host, *path;
+      gint64 expiry, creation;
+      gboolean is_session, is_secure, is_http_only;
+
+      GValueArray *array = (GValueArray *)g_ptr_array_index (ptr_array, i);
+
+      // Initialise default values (TODO: Verify these are sensible,
+      // although they shouldn't ever get used)
+      name = value = host = path = NULL;
+      expiry = creation = 0;
+      is_session = TRUE;
+      is_secure = is_http_only = FALSE;
+
+      for (guint j = 0; j < array->n_values; j++) {
+        GValue *gvalue = g_value_array_get_nth (array, j);
+
+        switch (j) {
+          case 0:
+            name = g_value_dup_string (gvalue);
+            break;
+
+          case 1:
+            value = g_value_dup_string (gvalue);
+            break;
+
+          case 2:
+            host = g_value_dup_string (gvalue);
+            break;
+
+          case 3:
+            path = g_value_dup_string (gvalue);
+            break;
+
+          case 4:
+            expiry = g_value_get_int64 (gvalue);
+            break;
+
+          case 5:
+            creation = g_value_get_int64 (gvalue);
+            break;
+
+          case 6:
+            is_session = g_value_get_boolean (gvalue);
+            break;
+
+          case 7:
+            is_secure = g_value_get_boolean (gvalue);
+            break;
+
+          case 8:
+            is_http_only = g_value_get_boolean (gvalue);
+            break;
+
+          default:
+            g_warning ("Unexpected value in cookie, ignoring");
+            break;
+        }
+      }
+
+      HeadlessCookie *cookie = new HeadlessCookie (name,
+                                                   value,
+                                                   host,
+                                                   path,
+                                                   expiry,
+                                                   creation,
+                                                   is_session,
+                                                   is_secure,
+                                                   is_http_only);
+      cookies.AppendObject (static_cast<nsICookie *>(cookie));
+
+      g_value_array_free (array);
+    }
+
+    g_ptr_array_free (ptr_array, TRUE);
+    ns_result = NS_NewArrayEnumerator (aEnumerator, cookies);
+  } else
+    *aEnumerator = nsnull;
+
+  return (nsresult)ns_result;
 }
 
 NS_IMETHODIMP
@@ -448,7 +557,24 @@ HeadlessCookieService::Remove (const nsACString &aDomain,
                                const nsACString &aPath,
                                PRBool            aBlocked)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  gboolean result;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+
+  result = mhs_cookies_remove (mMhsCookies,
+                               nsCString (aDomain).get (),
+                               nsCString (aName).get (),
+                               nsCString (aPath).get (),
+                               aBlocked,
+                               &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error removing cookie: %s", error->message);
+    g_error_free (error);
+  }
+
+  return (nsresult)ns_result;
 }
 
 //////////////////////////////////////
