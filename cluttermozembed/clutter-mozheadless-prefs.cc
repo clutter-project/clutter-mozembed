@@ -1292,14 +1292,12 @@ void HeadlessPrefBranch::freeObserverList(void)
   mObservers = 0;
 }
 
-#define HEADLESS_PREFSERVICE_CID \
-  {0xfa60521e, 0xaae8, 0x42eb, {0x86, 0x6e, 0xbd, 0xed, 0x09, 0x79, 0xa9, 0x20}}
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(HeadlessPrefService, HeadlessPrefService::GetSingleton)
 
 static const nsModuleComponentInfo prefServiceComp = {
   "Preferences Service",
-  HEADLESS_PREFSERVICE_CID,
-  "@mozilla.org/preferences-service;1",
+  NS_PREFSERVICE_CID,
+  NS_PREFSERVICE_CONTRACTID,
   HeadlessPrefServiceConstructor
 };
 
