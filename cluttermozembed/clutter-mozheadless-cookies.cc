@@ -591,27 +591,147 @@ HeadlessCookieService::Add (const nsACString &aDomain,
                             PRBool            aIsSession,
                             PRInt64           aExpiry)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  gboolean result;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+
+  result = mhs_cookies_add (mMhsCookies,
+                            nsCString (aDomain).get (),
+                            nsCString (aPath).get (),
+                            nsCString (aName).get (),
+                            nsCString (aValue).get (),
+                            aIsSecure,
+                            aIsHttpOnly,
+                            aIsSession,
+                            aExpiry,
+                            &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error adding cookie: %s", error->message);
+    g_error_free (error);
+  }
+
+  return (nsresult)ns_result;
 }
 
 NS_IMETHODIMP
 HeadlessCookieService::CookieExists (nsICookie2 *aCookie,
                                      PRBool     *_retval NS_OUTPARAM)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  nsCAutoString host, name, path;
+  NS_ENSURE_ARG_POINTER (aCookie);
+
+  // FIXME: This function is extremely slow, we should think of either
+  // adding it to the service (which would still be slow, but a lot
+  // less so), or keeping a local cache of cookies.
+
+  nsISimpleEnumerator *enumerator;
+  nsresult rv = GetEnumerator (&enumerator);
+  if (NS_FAILED (rv))
+    return rv;
+
+  rv = aCookie->GetHost (host);
+  if (NS_FAILED (rv))
+    return rv;
+
+  rv = aCookie->GetName (name);
+  if (NS_FAILED (rv))
+    return rv;
+
+  rv = aCookie->GetPath (path);
+  if (NS_FAILED (rv))
+    return rv;
+
+  PRBool has_more;
+  PRInt64 now = PR_Now () / PR_USEC_PER_SEC;
+  *_retval = PR_FALSE;
+
+  while ((rv = enumerator->HasMoreElements (&has_more)) && has_more) {
+    nsISupports *element;
+    rv = enumerator->GetNext (&element);
+    if (NS_FAILED (rv))
+      break;
+
+    nsICookie2 *cookie = static_cast<nsICookie2 *>(element);
+
+    // There's no need to check the return values, we know our cookie
+    // implementation always returns NS_OK (implementation above)
+    PRInt64 expiry;
+    cookie->GetExpiry (&expiry);
+    if (expiry > now) {
+      nsCAutoString chost, cname, cpath;
+
+      cookie->GetHost (chost);
+      cookie->GetName (cname);
+      cookie->GetPath (cpath);
+
+      if (chost.Equals (host) &&
+          cname.Equals (name) &&
+          cpath.Equals (path)) {
+        *_retval = PR_TRUE;
+        break;
+      }
+    }
+  }
+  NS_RELEASE (enumerator);
+
+  if (NS_FAILED (rv))
+    return rv;
+
+  return rv;
 }
 
 NS_IMETHODIMP
 HeadlessCookieService::CountCookiesFromHost (const nsACString &aHost,
                                              PRUint32         *_retval NS_OUTPARAM)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  guint count;
+  gboolean result;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+
+  result = mhs_cookies_count_cookies_from_host (mMhsCookies,
+                                                nsCString (aHost).get (),
+                                                &count,
+                                                &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error counting cookies from host: %s", error->message);
+    g_error_free (error);
+  } else
+    *_retval = count;
+
+  return (nsresult)ns_result;
 }
 
 NS_IMETHODIMP
 HeadlessCookieService::ImportCookies (nsIFile *aCookieFile)
 {
-    return NS_ERROR_NOT_IMPLEMENTED;
+  char *path;
+  gboolean result;
+  nsAutoString path16;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+
+  nsresult rv = aCookieFile->GetPath (path16);
+  if (NS_FAILED (rv))
+      return rv;
+
+  path = ToNewUTF8String (path16);
+  result = mhs_cookies_import_cookies (mMhsCookies,
+                                       path,
+                                       &error);
+  NS_Free (path);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error importing cookies: %s", error->message);
+    g_error_free (error);
+  }
+
+  return (nsresult)ns_result;
 }
 
 
