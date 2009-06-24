@@ -35,6 +35,7 @@
 #include <nsCOMArray.h>
 #include <nsCOMPtr.h>
 #include <nsMemory.h>
+#include <nsNetCID.h>
 #include <nsServiceManagerUtils.h>
 #include <nsWeakReference.h>
 #include <nsStringGlue.h>
@@ -261,7 +262,7 @@ HeadlessCookieService *
 HeadlessCookieService::GetSingleton(void)
 {
   if (!sHeadlessCookieService) {
-    sHeadlessCookieService = new HeadlessCookieService ();
+    sHeadlessCookieService = new HeadlessCookieService;
   }
 
   return sHeadlessCookieService;
@@ -281,6 +282,7 @@ HeadlessCookieService::Release ()
 
 NS_INTERFACE_MAP_BEGIN(HeadlessCookieService)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsICookieService)
+  NS_INTERFACE_MAP_ENTRY(nsICookieService)
   NS_INTERFACE_MAP_ENTRY(nsICookieManager)
   NS_INTERFACE_MAP_ENTRY(nsICookieManager2)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
@@ -626,12 +628,7 @@ HeadlessCookieService::CookieExists (nsICookie2 *aCookie,
   // adding it to the service (which would still be slow, but a lot
   // less so), or keeping a local cache of cookies.
 
-  nsISimpleEnumerator *enumerator;
-  nsresult rv = GetEnumerator (&enumerator);
-  if (NS_FAILED (rv))
-    return rv;
-
-  rv = aCookie->GetHost (host);
+  nsresult rv = aCookie->GetHost (host);
   if (NS_FAILED (rv))
     return rv;
 
@@ -640,6 +637,11 @@ HeadlessCookieService::CookieExists (nsICookie2 *aCookie,
     return rv;
 
   rv = aCookie->GetPath (path);
+  if (NS_FAILED (rv))
+    return rv;
+
+  nsISimpleEnumerator *enumerator;
+  rv = GetEnumerator (&enumerator);
   if (NS_FAILED (rv))
     return rv;
 
@@ -735,13 +737,39 @@ HeadlessCookieService::ImportCookies (nsIFile *aCookieFile)
 }
 
 
+NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(HeadlessCookieService, HeadlessCookieService::GetSingleton)
+
+static const nsModuleComponentInfo cookieServiceComp = {
+  "Headless Cookie Service",
+  NS_COOKIESERVICE_CID,
+  NS_COOKIESERVICE_CONTRACTID,
+  HeadlessCookieServiceConstructor
+};
+
+static const nsModuleComponentInfo cookieManagerComp = {
+  "Headless Cookie Manager",
+  NS_COOKIEMANAGER_CID,
+  NS_COOKIEMANAGER_CONTRACTID,
+  HeadlessCookieServiceConstructor
+};
+
 void
 clutter_mozheadless_cookies_init ()
 {
+  static gboolean comp_is_registered = FALSE;
+
+  if (!comp_is_registered)
+    {
+      moz_headless_register_component ((gpointer)&cookieServiceComp);
+      moz_headless_register_component ((gpointer)&cookieManagerComp);
+      comp_is_registered = TRUE;
+    }
 }
 
 void
 clutter_mozheadless_cookies_deinit ()
 {
+  if (HeadlessCookieService::sHeadlessCookieService)
+    delete HeadlessCookieService::sHeadlessCookieService;
 }
 
