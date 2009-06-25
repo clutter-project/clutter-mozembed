@@ -144,6 +144,12 @@ HeadlessPrefService::HeadlessPrefService(void)
 
 HeadlessPrefService::~HeadlessPrefService()
 {
+  if (mBranchById)
+    {
+      g_hash_table_destroy (mBranchById);
+      mBranchById = NULL;
+    }
+
   if (mMhsPrefs)
     {
       g_signal_handlers_disconnect_by_func (mMhsPrefs,
@@ -151,12 +157,6 @@ HeadlessPrefService::~HeadlessPrefService()
                                             this);
       g_object_unref (mMhsPrefs);
       mMhsPrefs = NULL;
-    }
-
-  if (mBranchById)
-    {
-      g_hash_table_destroy (mBranchById);
-      mBranchById = NULL;
     }
 
   if (sHeadlessPrefService == this)
