@@ -76,6 +76,17 @@ typedef struct {
                          ClutterMozEmbedDownload *download);
 } ClutterMozEmbedClass;
 
+/* Security property's flags match Mozilla's nsIWebProgressListener values */
+typedef enum {
+  CLUTTER_MOZEMBED_IS_BROKEN   = (1 << 0),
+  CLUTTER_MOZEMBED_IS_SECURE   = (1 << 1),
+  CLUTTER_MOZEMBED_IS_INSECURE = (1 << 2),
+
+  CLUTTER_MOZEMBED_SECURITY_MEDIUM = (1 << 16),
+  CLUTTER_MOZEMBED_SECURITY_LOW    = (1 << 17),
+  CLUTTER_MOZEMBED_SECURITY_HIGH   = (1 << 18),
+} ClutterMozEmbedSecurity;
+
 GType clutter_mozembed_get_type (void);
 
 ClutterActor *clutter_mozembed_new (void);

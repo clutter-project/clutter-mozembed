@@ -336,6 +336,17 @@ size_to_cb (ClutterMozHeadless *self, gint width, gint height)
 }
 
 static void
+security_change_cb (ClutterMozHeadless *self,
+                    void               *request,
+                    guint               state,
+                    gpointer            ignored)
+{
+  gchar *feedback = g_strdup_printf ("security %d", state);
+  send_feedback_all (self, feedback);
+  g_free (feedback);
+}
+
+static void
 file_changed_cb (GFileMonitor           *monitor,
                  GFile                  *file,
                  GFile                  *other_file,
@@ -1113,6 +1124,8 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (can_go_forward_cb), NULL);
   g_signal_connect (object, "size-to",
                     G_CALLBACK (size_to_cb), NULL);
+  g_signal_connect (object, "security_change",
+                    G_CALLBACK (security_change_cb), NULL);
 
   spawned_heads ++;
 

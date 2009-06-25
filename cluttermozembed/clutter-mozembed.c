@@ -69,7 +69,8 @@ enum
   PROP_CONNECT_TIMEOUT,
   PROP_CAN_GO_BACK,
   PROP_CAN_GO_FORWARD,
-  PROP_CURSOR
+  PROP_CURSOR,
+  PROP_SECURITY
 };
 
 enum
@@ -127,6 +128,7 @@ struct _ClutterMozEmbedPrivate
   gint             doc_height;
   gint             scroll_x;
   gint             scroll_y;
+  guint            security;
   gboolean         is_loading;
   gdouble          progress;
   gboolean         can_go_back;
@@ -609,6 +611,16 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
 
       priv->cursor = cursor;
       g_object_notify (G_OBJECT (self), "cursor");
+    }
+  else if (g_str_equal (command, "security"))
+    {
+      gchar *params[1];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      priv->security = atoi (params[0]);
+      g_object_notify (G_OBJECT (self), "security");
     }
   else if (g_str_equal (command, "dl-start"))
     {
@@ -1178,6 +1190,10 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
 
   case PROP_CURSOR :
     g_value_set_uint (value, self->priv->cursor);
+    break;
+
+  case PROP_SECURITY :
+    g_value_set_uint (value, self->priv->security);
     break;
 
   default:
@@ -2595,6 +2611,19 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                       G_PARAM_STATIC_NICK |
                                                       G_PARAM_STATIC_BLURB));
 
+  g_object_class_install_property (object_class,
+                                   PROP_CURSOR,
+                                   g_param_spec_uint ("security",
+                                                      "Security status",
+                                                      "Presence of secure web "
+                                                      "elements and level of "
+                                                      "security",
+                                                      0, G_MAXUINT, 0,
+                                                      G_PARAM_READABLE |
+                                                      G_PARAM_STATIC_NAME |
+                                                      G_PARAM_STATIC_NICK |
+                                                      G_PARAM_STATIC_BLURB));
+
   signals[PROGRESS] =
     g_signal_new ("progress",
                   G_TYPE_FROM_CLASS (klass),
@@ -2962,6 +2991,12 @@ MozHeadlessCursorType
 clutter_mozembed_get_cursor (ClutterMozEmbed *mozembed)
 {
   return mozembed->priv->cursor;
+}
+
+guint
+clutter_mozembed_get_security (ClutterMozEmbed *mozembed)
+{
+  return mozembed->priv->security;
 }
 
 GList *
