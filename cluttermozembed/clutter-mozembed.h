@@ -120,6 +120,7 @@ void clutter_mozembed_scroll_to (ClutterMozEmbed *mozembed, gint x, gint y);
 
 gboolean clutter_mozembed_is_loading (ClutterMozEmbed *mozembed);
 gdouble clutter_mozembed_get_progress (ClutterMozEmbed *mozembed);
+guint clutter_mozembed_get_security (ClutterMozEmbed *mozembed);
 
 MozHeadlessCursorType clutter_mozembed_get_cursor (ClutterMozEmbed *mozembed);
 
