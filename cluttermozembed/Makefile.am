@@ -81,6 +81,8 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozheadless-downloads.h \
 	clutter-mozheadless-history.cc \
 	clutter-mozheadless-history.h \
+	clutter-mozheadless-login-manager-storage.cc \
+	clutter-mozheadless-login-manager-storage.h \
 	clutter-mozheadless-prefs.cc \
 	clutter-mozheadless-prefs.h \
 	clutter-mozheadless-cookies.cc \
