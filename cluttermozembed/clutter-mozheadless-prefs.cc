@@ -135,7 +135,8 @@ HeadlessPrefService::HeadlessPrefService(void)
   g_signal_connect (mMhsPrefs, "branch-changed",
                     G_CALLBACK (_branch_changed_cb), this);
 
-  HeadlessPrefBranch *rootBranch = new HeadlessPrefBranch (mMhsPrefs, 0, "", PR_FALSE);
+  HeadlessPrefBranch *rootBranch =
+    new HeadlessPrefBranch (mMhsPrefs, 0, "", PR_FALSE);
   mRootBranch = (nsIPrefBranch2 *)rootBranch;
 
   mBranchById = g_hash_table_new (g_direct_hash, g_direct_equal);
@@ -186,7 +187,6 @@ HeadlessPrefService *
 HeadlessPrefService::GetSingleton(void)
 {
   if (!sHeadlessPrefService) {
-    // FIXME: Figure out if we're doign the right thing re refs here
     sHeadlessPrefService = new HeadlessPrefService ();
   }
 
@@ -331,11 +331,10 @@ HeadlessPrefService::GetBranch(const char     *aPrefRoot,
   gboolean result;
   GError *error = NULL;
 
-  if (aDefault && ((aPrefRoot == nsnull) || (*aPrefRoot == '\0')) && (mRootBranch)) {
+  if (!aDefault && ((aPrefRoot == nsnull) || (*aPrefRoot == '\0')) && (mRootBranch)) {
     return CallQueryInterface(mRootBranch, _retval);
   }
 
-  // g_debug ("GetBranch(%s)", root);
   if (aDefault)
     result = mhs_prefs_get_default_branch (mMhsPrefs,
                                            (const gchar *)aPrefRoot,
@@ -361,6 +360,7 @@ HeadlessPrefService::GetBranch(const char     *aPrefRoot,
                                                            aDefault);
       ns_result = (guint)CallQueryInterface(branch, _retval);
 
+      // g_debug ("GotBranch(%s, %d) = %d", aPrefRoot, aDefault, id);
       if (NS_SUCCEEDED (ns_result))
         AddBranch (branch, id);
       else
@@ -828,7 +828,7 @@ HeadlessPrefBranch::GetIntPref(const char *aPrefName, PRInt32 *_retval)
   gboolean result;
   gint value;
 
-  // g_debug ("GetInt(%d, %s)", id, name);
+  // g_debug ("GetInt(%d, %s)", mId, aPrefName);
   result = mhs_prefs_branch_get_int (mMhsPrefs,
                                      mId,
                                      aPrefName,
@@ -1161,7 +1161,7 @@ HeadlessPrefBranch::AddObserver(const char  *aDomain,
   GError *error = NULL;
   gboolean result;
 
-  // g_debug ("AddObserver(%d, %s)", id, domain);
+  // g_debug ("AddObserver(%d, %s, %d) (%p)", mId, aDomain, aHoldWeak, (void *)this);
   result = mhs_prefs_branch_add_observer (mMhsPrefs,
                                           mId,
                                           (const gchar *)aDomain,
@@ -1208,7 +1208,7 @@ HeadlessPrefBranch::RemoveObserver(const char *aDomain, nsIObserver *aObserver)
     gboolean result;
     GError *error = NULL;
 
-    // g_debug ("RemoveObserver(%d, %s)", id, domain);
+    // g_debug ("RemoveObserver(%d, %s)", mId, aDomain);
     // This needs to be called first, as aDomain == pDomain, possibly
     result = mhs_prefs_branch_remove_observer (mMhsPrefs,
                                                mId,
@@ -1266,9 +1266,11 @@ HeadlessPrefBranch::SignalChange(const char *aDomain)
   if (count == 0)
     return;
 
+  // g_debug ("SignalChange: %d, %s", mId, aDomain);
   for (i = 0; i < count; i++) {
     pCallback = (PrefCallbackData *)mObservers->ElementAt(i);
-    if (pCallback && (g_str_has_prefix (aDomain, pCallback->pDomain))) {
+    if (pCallback &&
+        g_str_has_prefix (aDomain, pCallback->pDomain)) {
       pCallback->pObserver->Observe (static_cast<nsIPrefBranch *>(this),
                                  NS_PREFBRANCH_PREFCHANGE_TOPIC_ID,
                                  NS_ConvertUTF8toUTF16 (aDomain).get());
