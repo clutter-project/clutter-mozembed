@@ -347,6 +347,23 @@ security_change_cb (ClutterMozHeadless *self,
 }
 
 static void
+show_tooltip_cb (ClutterMozHeadless *self,
+                 const gchar        *text,
+                 gint                x,
+                 gint                y)
+{
+  gchar *feedback = g_strdup_printf ("show-tip %d %d %s", x, y, text);
+  send_feedback_all (self, feedback);
+  g_free (feedback);
+}
+
+static void
+hide_tooltip_cb (ClutterMozHeadless *self)
+{
+  send_feedback_all (self, "hide-tip");
+}
+
+static void
 file_changed_cb (GFileMonitor           *monitor,
                  GFile                  *file,
                  GFile                  *other_file,
@@ -1126,6 +1143,10 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (size_to_cb), NULL);
   g_signal_connect (object, "security_change",
                     G_CALLBACK (security_change_cb), NULL);
+  g_signal_connect (object, "show-tooltip",
+                    G_CALLBACK (show_tooltip_cb), NULL);
+  g_signal_connect (object, "hide-tooltip",
+                    G_CALLBACK (hide_tooltip_cb), NULL);
 
   spawned_heads ++;
 

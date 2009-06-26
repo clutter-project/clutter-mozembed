@@ -74,6 +74,11 @@ typedef struct {
   void (* size_request) (ClutterMozEmbed *mozembed, gint width, gint height);
   void (* download)     (ClutterMozEmbed         *mozembed,
                          ClutterMozEmbedDownload *download);
+  void (* show_tooltip) (ClutterMozEmbed *mozembed,
+                         const gchar     *text,
+                         gint             x,
+                         gint             y);
+  void (* hide_tooltip) (ClutterMozEmbed *mozembed);
 } ClutterMozEmbedClass;
 
 /* Security property's flags match Mozilla's nsIWebProgressListener values */

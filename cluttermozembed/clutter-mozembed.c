@@ -84,6 +84,8 @@ enum
   LINK_MESSAGE,
   SIZE_REQUEST,
   DOWNLOAD,
+  SHOW_TOOLTIP,
+  HIDE_TOOLTIP,
 
   LAST_SIGNAL
 };
@@ -663,6 +665,20 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
                                       GINT_TO_POINTER (atoi (params[0])));
       if (download)
         g_signal_emit_by_name (download, "complete");
+    }
+  else if (g_str_equal (command, "show-tip"))
+    {
+      gchar *params[3];
+
+      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+        return;
+
+      g_signal_emit (self, signals[SHOW_TOOLTIP], 0, params[2],
+                     atoi (params[0]), atoi (params[1]));
+    }
+  else if (g_str_equal (command, "hide-tip"))
+    {
+      g_signal_emit (self, signals[HIDE_TOOLTIP], 0);
     }
   else
     {
@@ -2704,6 +2720,24 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   NULL, NULL,
                   g_cclosure_marshal_VOID__OBJECT,
                   G_TYPE_NONE, 1, CLUTTER_TYPE_MOZEMBED_DOWNLOAD);
+
+  signals[SHOW_TOOLTIP] =
+    g_signal_new ("show-tooltip",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, show_tooltip),
+                  NULL, NULL,
+                  _clutter_mozembed_marshal_VOID__STRING_INT_INT,
+                  G_TYPE_NONE, 3, G_TYPE_STRING, G_TYPE_INT, G_TYPE_INT);
+
+  signals[HIDE_TOOLTIP] =
+    g_signal_new ("hide-tooltip",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, hide_tooltip),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__VOID,
+                  G_TYPE_NONE, 0);
 }
 
 static void
