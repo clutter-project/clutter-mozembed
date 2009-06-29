@@ -1257,6 +1257,7 @@ int
 main (int argc, char **argv)
 {
   ClutterMozHeadless *moz_headless;
+  const gchar *paths;
 
 #ifdef SUPPORT_PLUGINS
   gtk_init (&argc, &argv);
@@ -1279,6 +1280,23 @@ main (int argc, char **argv)
   moz_headless_set_comp_path (PKGDATADIR);
   moz_headless_set_directory (NS_APP_USER_MIMETYPES_50_FILE,
                               PKGDATADIR "/mimeTypes.rdf");
+
+  if ((paths = g_getenv ("CLUTTER_MOZEMBED_COMP_PATHS")))
+    {
+      gchar **pathsv = g_strsplit (paths, ":", -1), **p;
+      for (p = pathsv; *p; p++)
+        moz_headless_add_comp_path (*p);
+      g_strfreev (pathsv);
+    }
+
+  if ((paths = g_getenv ("CLUTTER_MOZEMBED_CHROME_PATHS")))
+    {
+      gchar **pathsv = g_strsplit (paths, ":", -1), **p;
+      for (p = pathsv; *p; p++)
+        moz_headless_add_chrome_path (*p);
+      g_strfreev (pathsv);
+    }
+
   moz_headless_push_startup ();
 
   clutter_mozheadless_history_init ();

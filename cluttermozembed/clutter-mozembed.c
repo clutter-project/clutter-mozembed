@@ -70,7 +70,9 @@ enum
   PROP_CAN_GO_BACK,
   PROP_CAN_GO_FORWARD,
   PROP_CURSOR,
-  PROP_SECURITY
+  PROP_SECURITY,
+  PROP_COMP_PATHS,
+  PROP_CHROME_PATHS
 };
 
 enum
@@ -149,6 +151,11 @@ struct _ClutterMozEmbedPrivate
   guint            poll_timeout_source;
   guint            connect_timeout;
   guint            connect_timeout_source;
+
+  /* List of extra paths to search for components */
+  gchar          **comp_paths;
+  /* and for chrome manifest files */
+  gchar          **chrome_paths;
 
 #ifdef SUPPORT_PLUGINS
   /* The window given for us to parent a plugin viewport onto */
@@ -1212,6 +1219,14 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_uint (value, self->priv->security);
     break;
 
+  case PROP_COMP_PATHS :
+    g_value_set_boxed (value, self->priv->comp_paths);
+    break;
+
+  case PROP_CHROME_PATHS :
+    g_value_set_boxed (value, self->priv->chrome_paths);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -1271,6 +1286,14 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
 
   case PROP_CURSOR :
     priv->cursor = g_value_get_uint (value);
+    break;
+
+  case PROP_COMP_PATHS :
+    priv->comp_paths = g_strdupv (g_value_get_boxed (value));
+    break;
+
+  case PROP_CHROME_PATHS :
+    priv->chrome_paths = g_strdupv (g_value_get_boxed (value));
     break;
 
   default:
@@ -1481,6 +1504,9 @@ clutter_mozembed_finalize (GObject *object)
 #ifdef SUPPORT_PLUGINS
   g_free (priv->pending_url);
 #endif
+
+  g_strfreev (priv->comp_paths);
+  g_strfreev (priv->chrome_paths);
 
   if (priv->image_data)
     munmap (priv->image_data, priv->image_size);
@@ -2267,6 +2293,55 @@ connect_timeout_cb (ClutterMozEmbed *self)
   return FALSE;
 }
 
+static gchar *
+clutter_mozembed_strv_to_env (gchar **strv, const gchar *prefix)
+{
+  GString *str = g_string_new (prefix);
+  gchar **p;
+
+  for (p = strv; *p; p++)
+    {
+      if (p > strv)
+        g_string_append_c (str, ':');
+      g_string_append (str, *p);
+    }
+
+  return g_string_free (str, FALSE);
+}
+
+static gchar **
+clutter_mozembed_get_paths_env (ClutterMozEmbed *self)
+{
+  ClutterMozEmbedPrivate *priv = self->priv;
+  gchar **env_names;
+  guint i, env_size;
+  gchar **new_env;
+
+  /* Copy the existing environment */
+  env_names = g_listenv ();
+  env_size = g_strv_length (env_names);
+  new_env = g_new (gchar *, env_size + 3);
+
+  for (i = 0; i < env_size; i++)
+    new_env[i] = g_strconcat (env_names[i], "=", g_getenv (env_names[i]), NULL);
+
+  g_strfreev (env_names);
+
+  /* Add vars containing the list of paths */
+  if (priv->comp_paths)
+    new_env[i++] =
+      clutter_mozembed_strv_to_env (priv->comp_paths,
+                                    "CLUTTER_MOZEMBED_COMP_PATHS=");
+  if (priv->chrome_paths)
+    new_env[i++] =
+      clutter_mozembed_strv_to_env (priv->chrome_paths,
+                                    "CLUTTER_MOZEMBED_CHROME_PATHS=");
+
+  new_env[i++] = NULL;
+
+  return new_env;
+}
+
 static void
 clutter_mozembed_constructed (GObject *object)
 {
@@ -2331,9 +2406,11 @@ clutter_mozembed_constructed (GObject *object)
         }
       else
         {
+          gchar **env = clutter_mozembed_get_paths_env (self);
+
           success = g_spawn_async_with_pipes (NULL,
                                               argv,
-                                              NULL,
+                                              env,
                                               G_SPAWN_SEARCH_PATH /*|
                                               G_SPAWN_STDERR_TO_DEV_NULL |
                                               G_SPAWN_STDOUT_TO_DEV_NULL*/,
@@ -2344,7 +2421,9 @@ clutter_mozembed_constructed (GObject *object)
                                               NULL,
                                               NULL,
                                               &error);
-          
+
+          g_strfreev (env);
+
           if (!success)
             {
               g_warning ("Error spawning renderer: %s", error->message);
@@ -2653,6 +2732,34 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                       G_PARAM_STATIC_NAME |
                                                       G_PARAM_STATIC_NICK |
                                                       G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_COMP_PATHS,
+                                   g_param_spec_boxed ("comp-paths",
+                                                       "Component Paths",
+                                                       "Array of additional "
+                                                       "paths to search for "
+                                                       "components.",
+                                                       G_TYPE_STRV,
+                                                       G_PARAM_READWRITE |
+                                                       G_PARAM_STATIC_NAME |
+                                                       G_PARAM_STATIC_NICK |
+                                                       G_PARAM_STATIC_BLURB |
+                                                       G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_CHROME_PATHS,
+                                   g_param_spec_boxed ("chrome-paths",
+                                                       "Chrome Paths",
+                                                       "Array of additional "
+                                                       "paths to search for "
+                                                       "chrome manifests.",
+                                                       G_TYPE_STRV,
+                                                       G_PARAM_READWRITE |
+                                                       G_PARAM_STATIC_NAME |
+                                                       G_PARAM_STATIC_NICK |
+                                                       G_PARAM_STATIC_BLURB |
+                                                       G_PARAM_CONSTRUCT_ONLY));
 
   signals[PROGRESS] =
     g_signal_new ("progress",
@@ -3052,4 +3159,3 @@ clutter_mozembed_get_downloads (ClutterMozEmbed *mozembed)
 {
   return g_hash_table_get_values (mozembed->priv->downloads);
 }
-
