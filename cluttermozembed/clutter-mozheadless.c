@@ -804,6 +804,13 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
           priv->new_shm_name = g_strdup (params[2]);
         }
     }
+  else if (g_str_equal (command, "focus"))
+    {
+      if (!detail)
+        return;
+
+      moz_headless_focus (MOZ_HEADLESS (moz_headless), atoi (detail));
+    }
 #ifdef SUPPORT_PLUGINS
   else if (g_str_equal (command, "plugin-window"))
     {

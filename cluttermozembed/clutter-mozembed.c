@@ -1706,6 +1706,18 @@ clutter_mozembed_get_modifier (ClutterModifierType modifiers)
   return mozifiers;
 }
 
+static void
+clutter_mozembed_key_focus_in (ClutterActor *actor)
+{
+  send_command (CLUTTER_MOZEMBED (actor), "focus 1");
+}
+
+static void
+clutter_mozembed_key_focus_out (ClutterActor *actor)
+{
+  send_command (CLUTTER_MOZEMBED (actor), "focus 0");
+}
+
 static gboolean
 clutter_mozembed_motion_event (ClutterActor *actor, ClutterMotionEvent *event)
 {
@@ -2386,6 +2398,8 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
   actor_class->key_press_event      = clutter_mozembed_key_press_event;
   actor_class->key_release_event    = clutter_mozembed_key_release_event;
   actor_class->scroll_event         = clutter_mozembed_scroll_event;
+  actor_class->key_focus_in         = clutter_mozembed_key_focus_in;
+  actor_class->key_focus_out        = clutter_mozembed_key_focus_out;
 #ifdef SUPPORT_PLUGINS
   actor_class->map                  = clutter_mozembed_map;
   actor_class->unmap                = clutter_mozembed_unmap;
