@@ -291,7 +291,8 @@ update (ClutterMozEmbed *self,
                                                 surface_height,
                                                 surface_width * 4,
                                                 4,
-                                                CLUTTER_TEXTURE_RGB_FLAG_BGR,
+                                                CLUTTER_TEXTURE_RGB_FLAG_BGR |
+                                                CLUTTER_TEXTURE_RGB_FLAG_PREMULT,
                                                 &error);
   else
     result = clutter_texture_set_area_from_rgb_data (CLUTTER_TEXTURE (self),
@@ -304,7 +305,8 @@ update (ClutterMozEmbed *self,
                                                      height,
                                                      surface_width * 4,
                                                      4,
-                                                     CLUTTER_TEXTURE_RGB_FLAG_BGR,
+                                                     CLUTTER_TEXTURE_RGB_FLAG_BGR |
+                                                     CLUTTER_TEXTURE_RGB_FLAG_PREMULT,
                                                      &error);
 
   if (!result)
@@ -1642,7 +1644,10 @@ clutter_mozembed_allocate (ClutterActor           *actor,
       memset (data, 0xff, width * height * 4);
       clutter_texture_set_from_rgb_data (CLUTTER_TEXTURE (actor),
                                          data, TRUE, width, height,
-                                         width * 4, 4, 0, NULL);
+                                         width * 4, 4,
+                                         CLUTTER_TEXTURE_RGB_FLAG_BGR |
+                                         CLUTTER_TEXTURE_RGB_FLAG_PREMULT,
+                                         NULL);
       g_free (data);
 
       /* Unmap previous texture data */
