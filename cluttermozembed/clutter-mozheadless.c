@@ -58,7 +58,8 @@ enum
   PROP_INPUT,
   PROP_OUTPUT,
   PROP_SHM,
-  PROP_CONNECT_TIMEOUT
+  PROP_CONNECT_TIMEOUT,
+  PROP_PRIVATE
 };
 
 struct _ClutterMozHeadlessPrivate
@@ -90,6 +91,8 @@ struct _ClutterMozHeadlessPrivate
   guint            connect_timeout;
   guint            connect_timeout_source;
 
+  /* Page property variables */
+  gboolean         private;
   guint            security;
 };
 
@@ -289,6 +292,7 @@ new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
                                 "output", priv->new_output_file,
                                 "input", priv->new_input_file,
                                 "shm", priv->new_shm_name,
+                                "private", priv->private,
                                 NULL);
       moz_headless_set_chrome_mask (*newEmbed, chromemask);
 
@@ -401,12 +405,12 @@ file_changed_cb (GFileMonitor           *monitor,
   gint fd;
   gint doc_width, doc_height, sx, sy;
   gchar *feedback;
-  
+
   ClutterMozHeadlessPrivate *priv = view->parent->priv;
 
   if (event_type != G_FILE_MONITOR_EVENT_CREATED)
     return;
-  
+
   g_signal_handlers_disconnect_by_func (monitor, file_changed_cb, view);
   g_file_monitor_cancel (monitor);
   g_object_unref (monitor);
@@ -449,6 +453,10 @@ file_changed_cb (GFileMonitor           *monitor,
       view->waiting_for_ack = TRUE;
       priv->waiting_for_ack ++;
     }
+
+  /* Inform if we're private */
+  if (priv->private)
+    send_feedback (view, "private 1");
 }
 
 static void
@@ -473,9 +481,9 @@ clutter_mozheadless_create_view (ClutterMozHeadless *self,
 
   ClutterMozHeadlessPrivate *priv = self->priv;
   ClutterMozHeadlessView *view = g_new0 (ClutterMozHeadlessView, 1);
-  
+
   priv->views = g_list_append (priv->views, view);
-  
+
   view->parent = self;
   view->input_file = input_file;
   view->output_file = output_file;
@@ -823,6 +831,7 @@ process_command (ClutterMozHeadlessView *view, gchar *command)
                         "input", params[0],
                         "output", params[1],
                         "shm", params[2],
+                        "private", priv->private,
                         NULL);
         }
       else
@@ -1051,6 +1060,10 @@ clutter_mozheadless_get_property (GObject *object, guint property_id,
     g_value_set_uint (value, priv->connect_timeout);
     break;
 
+  case PROP_PRIVATE :
+    g_value_set_boolean (value, priv->private);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -1077,6 +1090,10 @@ clutter_mozheadless_set_property (GObject *object, guint property_id,
 
   case PROP_CONNECT_TIMEOUT :
     priv->connect_timeout = g_value_get_uint (value);
+    break;
+
+  case PROP_PRIVATE :
+    priv->private = g_value_get_boolean (value);
     break;
 
   default:
@@ -1258,6 +1275,18 @@ clutter_mozheadless_class_init (ClutterMozHeadlessClass *klass)
                                                       G_PARAM_STATIC_NICK |
                                                       G_PARAM_STATIC_BLURB |
                                                       G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_PRIVATE,
+                                   g_param_spec_boolean ("private",
+                                                         "Private",
+                                                         "Private mode.",
+                                                         FALSE,
+                                                         G_PARAM_READWRITE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB |
+                                                         G_PARAM_CONSTRUCT_ONLY));
 }
 
 static void
@@ -1286,12 +1315,13 @@ main (int argc, char **argv)
 {
   ClutterMozHeadless *moz_headless;
   const gchar *paths;
+  gboolean private;
 
 #ifdef SUPPORT_PLUGINS
   gtk_init (&argc, &argv);
 #endif
 
- if (argc != 4)
+ if ((argc != 4) && (argc != 5))
     {
       printf ("Usage: %s <output pipe> <input pipe> <shm name>\n", argv[0]);
       return 1;
@@ -1327,17 +1357,23 @@ main (int argc, char **argv)
 
   moz_headless_push_startup ();
 
-  clutter_mozheadless_history_init ();
+  private = (argc > 4) ? (*argv[4] == 'p') : FALSE;
+
   clutter_mozheadless_prefs_init ();
   clutter_mozheadless_downloads_init ();
-  clutter_mozheadless_cookies_init ();
   clutter_mozheadless_certs_init ();
-  clutter_mozheadless_login_manager_storage_init ();
+  if (!private)
+    {
+      clutter_mozheadless_history_init ();
+      clutter_mozheadless_cookies_init ();
+      clutter_mozheadless_login_manager_storage_init ();
+    }
 
   moz_headless = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
                                "output", argv[1],
                                "input", argv[2],
                                "shm", argv[3],
+                               "private", private,
                                NULL);
 
   moz_headless_set_change_cursor_callback (cursor_changed_cb,
@@ -1348,12 +1384,15 @@ main (int argc, char **argv)
   g_main_loop_run (mainloop);
 
   moz_headless_pop_startup ();
-  clutter_mozheadless_history_deinit ();
   clutter_mozheadless_prefs_deinit ();
   clutter_mozheadless_downloads_deinit ();
-  clutter_mozheadless_cookies_deinit ();
   clutter_mozheadless_certs_deinit ();
-  clutter_mozheadless_login_manager_storage_deinit ();
+  if (!private)
+    {
+      clutter_mozheadless_history_deinit ();
+      clutter_mozheadless_cookies_deinit ();
+      clutter_mozheadless_login_manager_storage_deinit ();
+    }
 
   return 0;
 }

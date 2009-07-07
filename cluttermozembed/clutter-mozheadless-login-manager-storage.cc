@@ -397,9 +397,6 @@ HeadlessLoginManagerStorage::GetAllEncryptedLogins (PRUint32 *count_out
 
   if (mhs_lms_get_all_encrypted_logins (mMhsLms, &n_logins, &logins, &error))
     {
-      guint n_logins;
-      MhsLoginInfo *logins;
-
       rv = ConvertMhsLoginInfos (count_out, logins_out,
                                  n_logins, logins);
     }
@@ -441,9 +438,6 @@ HeadlessLoginManagerStorage::SearchLogins (PRUint32 *count_out NS_OUTPARAM,
                                  &n_logins, &logins,
                                  &error))
         {
-          guint n_logins;
-          MhsLoginInfo *logins;
-
           rv = ConvertMhsLoginInfos (count_out, logins_out,
                                      n_logins, logins);
         }

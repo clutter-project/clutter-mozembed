@@ -72,7 +72,8 @@ enum
   PROP_CURSOR,
   PROP_SECURITY,
   PROP_COMP_PATHS,
-  PROP_CHROME_PATHS
+  PROP_CHROME_PATHS,
+  PROP_PRIVATE
 };
 
 enum
@@ -139,6 +140,7 @@ struct _ClutterMozEmbedPrivate
   gboolean         can_go_forward;
   GHashTable      *downloads;
   gboolean         scrollbars;
+  gboolean         private;
 
   /* Offsets for async scrolling mode */
   gint             offset_x;
@@ -689,6 +691,20 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
     {
       g_signal_emit (self, signals[HIDE_TOOLTIP], 0);
     }
+  else if (g_str_equal (command, "private"))
+    {
+      gboolean private;
+
+      if (!detail)
+        return;
+
+      private = atoi (detail);
+      if (priv->private != private)
+        {
+          priv->private = private;
+          g_object_notify (G_OBJECT (self), "private");
+        }
+    }
   else
     {
       g_warning ("Unrecognised feedback: %s", command);
@@ -1229,6 +1245,10 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_boxed (value, self->priv->chrome_paths);
     break;
 
+  case PROP_PRIVATE :
+    g_value_set_boolean (value, self->priv->private);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -1296,6 +1316,10 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
 
   case PROP_CHROME_PATHS :
     priv->chrome_paths = g_strdupv (g_value_get_boxed (value));
+    break;
+
+  case PROP_PRIVATE :
+    priv->private = g_value_get_boolean (value);
     break;
 
   default:
@@ -2358,6 +2382,7 @@ clutter_mozembed_constructed (GObject *object)
     NULL, /* Output pipe */
     NULL, /* Input pipe */
     NULL, /* SHM name */
+    NULL, /* Private mode */
     NULL
   };
 
@@ -2366,7 +2391,7 @@ clutter_mozembed_constructed (GObject *object)
   GError *error = NULL;
 
   /* Set up out-of-process renderer */
-  
+
   /* Generate names for pipe/shm, if not provided */
   /* Don't overwrite user-supplied pipe files */
   if (priv->output_file && g_file_test (priv->output_file, G_FILE_TEST_EXISTS))
@@ -2379,34 +2404,37 @@ clutter_mozembed_constructed (GObject *object)
       g_free (priv->input_file);
       priv->input_file = NULL;
     }
-  
+
   if (!priv->output_file)
     priv->output_file = g_strdup_printf ("%s/clutter-mozembed-%d-%d",
                                          g_get_tmp_dir (), getpid (),
                                          spawned_windows);
-  
+
   if (!priv->input_file)
     priv->input_file = g_strdup_printf ("%s/clutter-mozheadless-%d-%d",
                                         g_get_tmp_dir (), getpid (),
                                         spawned_windows);
-  
+
   if (!priv->shm_name)
     priv->shm_name = g_strdup_printf ("/mozheadless-%d-%d",
                                       getpid (), spawned_windows);
-  
+
   spawned_windows++;
-  
+
   /* Spawn renderer */
   argv[1] = priv->output_file;
   argv[2] = priv->input_file;
   argv[3] = priv->shm_name;
+  if (priv->private)
+    argv[4] = "p";
 
   if (priv->spawn)
     {
       if (g_getenv ("CLUTTER_MOZEMBED_DEBUG"))
         {
-          g_message ("Waiting for '%s %s %s %s' to be run",
-                     argv[0], argv[1], argv[2], argv[3]);
+          g_message ("Waiting for '%s %s %s %s %s' to be run",
+                     argv[0], argv[1], argv[2], argv[3],
+                     priv->private ? argv[4] : "");
           priv->connect_timeout = 0;
         }
       else
@@ -2726,7 +2754,7 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                       G_PARAM_STATIC_BLURB));
 
   g_object_class_install_property (object_class,
-                                   PROP_CURSOR,
+                                   PROP_SECURITY,
                                    g_param_spec_uint ("security",
                                                       "Security status",
                                                       "Presence of secure web "
@@ -2765,6 +2793,19 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                        G_PARAM_STATIC_NICK |
                                                        G_PARAM_STATIC_BLURB |
                                                        G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_PRIVATE,
+                                   g_param_spec_boolean ("private",
+                                                         "Private",
+                                                         "Whether to store "
+                                                         "any persistent data.",
+                                                         FALSE,
+                                                         G_PARAM_READWRITE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB |
+                                                         G_PARAM_CONSTRUCT_ONLY));
 
   signals[PROGRESS] =
     g_signal_new ("progress",
@@ -3164,3 +3205,10 @@ clutter_mozembed_get_downloads (ClutterMozEmbed *mozembed)
 {
   return g_hash_table_get_values (mozembed->priv->downloads);
 }
+
+gboolean
+clutter_mozembed_get_private (ClutterMozEmbed *mozembed)
+{
+  return mozembed->priv->private;
+}
+
