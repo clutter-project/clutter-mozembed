@@ -39,7 +39,10 @@
 #include "clutter-mozheadless-prefs.h"
 #include "clutter-mozheadless-downloads.h"
 #include "clutter-mozheadless-cookies.h"
+#include "clutter-mozheadless-certs.h"
 #include "clutter-mozheadless-login-manager-storage.h"
+
+#include "clutter-mozembed.h"
 
 #include <nsAppDirectoryServiceDefs.h>
 
@@ -86,6 +89,8 @@ struct _ClutterMozHeadlessPrivate
   /* Connection timeout variables */
   guint            connect_timeout;
   guint            connect_timeout_source;
+
+  guint            security;
 };
 
 static GMainLoop *mainloop;
@@ -97,6 +102,11 @@ static void block_until_command (ClutterMozHeadless *moz_headless,
 static gboolean input_io_func (GIOChannel              *source,
                                GIOCondition             condition,
                                ClutterMozHeadlessView  *view);
+
+static void security_change_cb (ClutterMozHeadless *self,
+                                void               *request,
+                                guint               state,
+                                gpointer            ignored);
 
 void
 send_feedback (ClutterMozHeadlessView *view,
@@ -126,12 +136,26 @@ static void
 location_cb (ClutterMozHeadless *headless)
 {
   gchar *location, *feedback;
+  gboolean status, update;
+  ClutterMozHeadlessPrivate *priv = headless->priv;
   
   location = moz_headless_get_location (MOZ_HEADLESS (headless));
   feedback = g_strdup_printf ("location %s", location);
   
   send_feedback_all (headless, feedback);
-  
+
+  status = update = (priv->security & CLUTTER_MOZEMBED_BAD_CERT) ? TRUE : FALSE;
+  clutter_mozheadless_update_cert_status (location, &update);
+
+  if (status != update)
+    {
+      if (update)
+        priv->security += CLUTTER_MOZEMBED_BAD_CERT;
+      else
+        priv->security -= CLUTTER_MOZEMBED_BAD_CERT;
+      security_change_cb (headless, NULL, priv->security, NULL);
+    }
+
   g_free (feedback);
   g_free (location);
 }
@@ -341,7 +365,11 @@ security_change_cb (ClutterMozHeadless *self,
                     guint               state,
                     gpointer            ignored)
 {
-  gchar *feedback = g_strdup_printf ("security %d", state);
+  gchar *feedback;
+  ClutterMozHeadlessPrivate *priv = self->priv;
+
+  priv->security = state | (priv->security & CLUTTER_MOZEMBED_BAD_CERT);
+  feedback = g_strdup_printf ("security %d", priv->security);
   send_feedback_all (self, feedback);
   g_free (feedback);
 }
@@ -1303,6 +1331,7 @@ main (int argc, char **argv)
   clutter_mozheadless_prefs_init ();
   clutter_mozheadless_downloads_init ();
   clutter_mozheadless_cookies_init ();
+  clutter_mozheadless_certs_init ();
   clutter_mozheadless_login_manager_storage_init ();
 
   moz_headless = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
@@ -1323,8 +1352,8 @@ main (int argc, char **argv)
   clutter_mozheadless_prefs_deinit ();
   clutter_mozheadless_downloads_deinit ();
   clutter_mozheadless_cookies_deinit ();
+  clutter_mozheadless_certs_deinit ();
   clutter_mozheadless_login_manager_storage_deinit ();
 
   return 0;
 }
-

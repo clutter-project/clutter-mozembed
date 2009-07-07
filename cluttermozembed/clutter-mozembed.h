@@ -90,6 +90,8 @@ typedef enum {
   CLUTTER_MOZEMBED_SECURITY_MEDIUM = (1 << 16),
   CLUTTER_MOZEMBED_SECURITY_LOW    = (1 << 17),
   CLUTTER_MOZEMBED_SECURITY_HIGH   = (1 << 18),
+
+  CLUTTER_MOZEMBED_BAD_CERT = (1 << 24)
 } ClutterMozEmbedSecurity;
 
 GType clutter_mozembed_get_type (void);
