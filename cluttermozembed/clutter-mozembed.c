@@ -1663,17 +1663,6 @@ clutter_mozembed_allocate (ClutterActor           *actor,
 
   if ((!priv->read_only) && ((tex_width != width) || (tex_height != height)))
     {
-      /* Fill the texture with white when resizing */
-      guchar *data = g_malloc (width * height * 4);
-      memset (data, 0xff, width * height * 4);
-      clutter_texture_set_from_rgb_data (CLUTTER_TEXTURE (actor),
-                                         data, TRUE, width, height,
-                                         width * 4, 4,
-                                         CLUTTER_TEXTURE_RGB_FLAG_BGR |
-                                         CLUTTER_TEXTURE_RGB_FLAG_PREMULT,
-                                         NULL);
-      g_free (data);
-
       /* Unmap previous texture data */
       if (priv->image_data)
         {
