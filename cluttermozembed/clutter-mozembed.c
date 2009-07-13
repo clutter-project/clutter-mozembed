@@ -2967,12 +2967,13 @@ clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
                 "output", &output,
                 "shm", &shm,
                 NULL);
+  CLUTTER_MOZEMBED (mozembed)->priv->private = parent->priv->private;
 
   command = g_strdup_printf ("new-window %s %s %s", input, output, shm);
   send_command (parent, command);
   g_free (command);
-  
-  return CLUTTER_ACTOR (mozembed);
+
+  return mozembed;
 }
 
 ClutterActor *
