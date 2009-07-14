@@ -1694,7 +1694,6 @@ clutter_mozembed_paint (ClutterActor *actor)
   ClutterMozEmbed *self = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = self->priv;
   ClutterGeometry geom;
-  CoglHandle material;
 #ifdef SUPPORT_PLUGINS
   GList *pwin;
 #endif
@@ -1702,25 +1701,33 @@ clutter_mozembed_paint (ClutterActor *actor)
   clutter_actor_get_allocation_geometry (actor, &geom);
 
   /* Offset if we're using async scrolling */
-  if (priv->async_scroll)
+  if (priv->async_scroll || !priv->read_only)
     {
       cogl_clip_push (0, 0, geom.width, geom.height);
       cogl_translate (priv->offset_x, priv->offset_y, 0);
     }
 
   /* Paint texture */
-  material = clutter_texture_get_cogl_material (CLUTTER_TEXTURE (actor));
-  if (material != COGL_INVALID_HANDLE)
+  if (priv->read_only)
+    CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->paint (actor);
+  else
     {
-      guint opacity;
-      gint width, height;
+      CoglHandle material =
+        clutter_texture_get_cogl_material (CLUTTER_TEXTURE (actor));
+      if (material != COGL_INVALID_HANDLE)
+        {
+          guint opacity;
+          gint width, height;
 
-      clutter_texture_get_base_size (CLUTTER_TEXTURE (actor), &width, &height);
-      opacity = clutter_actor_get_paint_opacity (actor);
+          clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
+                                         &width, &height);
+          opacity = clutter_actor_get_paint_opacity (actor);
 
-      cogl_material_set_color4ub (material, opacity, opacity, opacity, opacity);
-      cogl_set_source (material);
-      cogl_rectangle (0, 0, width, height);
+          cogl_material_set_color4ub (material,
+                                      opacity, opacity, opacity, opacity);
+          cogl_set_source (material);
+          cogl_rectangle (0, 0, width, height);
+        }
     }
 
 #ifdef SUPPORT_PLUGINS
@@ -1737,7 +1744,7 @@ clutter_mozembed_paint (ClutterActor *actor)
   cogl_clip_pop ();
 #endif
 
-  if (priv->async_scroll)
+  if (priv->async_scroll || !priv->read_only)
     cogl_clip_pop ();
 }
 
