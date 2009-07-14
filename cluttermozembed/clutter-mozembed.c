@@ -1704,7 +1704,8 @@ clutter_mozembed_paint (ClutterActor *actor)
   if (priv->async_scroll || !priv->read_only)
     {
       cogl_clip_push (0, 0, geom.width, geom.height);
-      cogl_translate (priv->offset_x, priv->offset_y, 0);
+      if (priv->async_scroll)
+        cogl_translate (priv->offset_x, priv->offset_y, 0);
     }
 
   /* Paint texture */
