@@ -22,6 +22,7 @@
 
 #ifdef SUPPORT_PLUGINS
 #include <gtk/gtk.h>
+#include <gdk/gdkx.h>
 #include <X11/Xlib.h>
 #endif
 #include <glib.h>
@@ -867,17 +868,7 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
           moz_headless_focus (MOZ_HEADLESS (moz_headless), focus);
           break;
         }
-      case CME_COMMAND_PLUGIN_WINDOW :
-        {
-#ifdef SUPPORT_PLUGINS
-          Window viewport_window = (Window)
-            clutter_mozembed_comms_receive_ulong (view->input);
-          moz_headless_set_plugin_window (MOZ_HEADLESS (moz_headless),
-                                          viewport_window);
-#endif
-          break;
-        }
-    case CME_COMMAND_PURGE_SESSION_HISTORY :
+      case CME_COMMAND_PURGE_SESSION_HISTORY :
         {
           moz_headless_purge_session_history (MOZ_HEADLESS (moz_headless));
           break;
@@ -1179,6 +1170,7 @@ clutter_mozheadless_constructed (GObject *object)
 {
   ClutterMozHeadless *self = CLUTTER_MOZHEADLESS (object);
   ClutterMozHeadlessPrivate *priv = self->priv;
+  GdkWindow *plugin_viewport;
 
   if (G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed)
     G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed (object);
@@ -1231,6 +1223,12 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (show_tooltip_cb), NULL);
   g_signal_connect (object, "hide-tooltip",
                     G_CALLBACK (hide_tooltip_cb), NULL);
+
+  plugin_viewport = moz_headless_get_plugin_window (MOZ_HEADLESS (self));
+  send_feedback_all (self, CME_FEEDBACK_PLUGIN_VIEWPORT,
+                     G_TYPE_ULONG,
+                     (unsigned long)GDK_WINDOW_XID (plugin_viewport),
+                     G_TYPE_INVALID);
 
   spawned_heads ++;
 
@@ -1353,7 +1351,7 @@ main (int argc, char **argv)
   gtk_init (&argc, &argv);
 #endif
 
- if ((argc != 4) && (argc != 5))
+  if ((argc != 4) && (argc != 5))
     {
       printf ("Usage: %s <output pipe> <input pipe> <shm name>\n", argv[0]);
       return 1;

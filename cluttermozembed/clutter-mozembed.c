@@ -168,19 +168,15 @@ struct _ClutterMozEmbedPrivate
   gchar          **chrome_paths;
 
 #ifdef SUPPORT_PLUGINS
-  /* The window given for us to parent a plugin viewport onto */
-  GdkWindow       *toplevel_window;
+  Window           stage_xwin;
+  GdkWindow       *stage_gdk_window;
 
-  /* A window created for the purpose of clipping input for
-   * plugin windows. */
+  /* The toplevel window owned by the moz-headless process that
+   * parents all the plugin windows. */
   Window           plugin_viewport;
+  gboolean         plugin_viewport_initialized;
 
   GList           *plugin_windows;
-
-  Window           stage_xwin;
-
-  gboolean         pending_open;
-  gchar           *pending_url;
 #endif
 
   MozHeadlessCursorType cursor;
@@ -525,10 +521,6 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
           {
             gchar *output_file, *input_file, *shm_name;
 
-#ifdef SUPPORT_PLUGINS
-            clutter_mozembed_init_viewport (new_window);
-#endif
-
             output_file = input_file = shm_name = NULL;
             g_object_get (G_OBJECT (new_window),
                           "output", &output_file,
@@ -678,6 +670,19 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
           {
             priv->private = private;
             g_object_notify (G_OBJECT (self), "private");
+          }
+
+        break;
+      }
+    case CME_FEEDBACK_PLUGIN_VIEWPORT :
+      {
+        unsigned long window =
+          clutter_mozembed_comms_receive_ulong (priv->input);
+
+        if (priv->plugin_viewport != window)
+          {
+            priv->plugin_viewport = window;
+            clutter_mozembed_init_viewport (self);
           }
 
         break;
@@ -979,19 +984,18 @@ static gboolean
 clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
-  Display *xdpy;
+  Display *xdpy = clutter_x11_get_default_display ();
   ClutterActor *stage;
-  unsigned long pixel;
+  //unsigned long pixel;
   int composite_major, composite_minor;
 
-  if (priv->plugin_viewport)
+  if (priv->plugin_viewport_initialized)
     return TRUE;
 
-  if (priv->read_only)
+  if (!priv->plugin_viewport)
     return FALSE;
 
-  xdpy = clutter_x11_get_default_display ();
-  if (!xdpy)
+  if (priv->read_only)
     return FALSE;
 
 #ifdef DEBUG_PLUGIN_VIEWPORT
@@ -1007,43 +1011,14 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
       (priv->stage_xwin == clutter_x11_get_root_window()))
     return FALSE;
 
-  priv->toplevel_window = gdk_window_foreign_new (priv->stage_xwin);
-  if (!priv->toplevel_window)
+  priv->stage_gdk_window = gdk_window_foreign_new (priv->stage_xwin);
+  if (!priv->stage_gdk_window)
     return FALSE;
 
-  /* XXX: If you uncomment the call to XCompositeRedirectWindow below this can
-   * simply help identify the viewport window for different tabs... */
-#ifndef DEBUG_PLUGIN_VIEWPORT
-  {
-  static int color_toggle = 0;
-  if (color_toggle)
-    pixel = BlackPixel (xdpy, DefaultScreen (xdpy));
-  else
-    pixel = WhitePixel (xdpy, DefaultScreen (xdpy));
-  color_toggle = !color_toggle;
-  }
-#else
-  pixel = WhitePixel (xdpy, DefaultScreen (xdpy));
-#endif
-
-  /* NB: The plugin viewport will be repositioned within mozembed::allocate,
-   * so the 100x100 size chosen here is arbitrary */
-  priv->plugin_viewport =
-    XCreateSimpleWindow (xdpy,
-                         priv->stage_xwin,
-                         -100, -100,
-                         100, 100,
-                         0, /* border width */
-                         pixel, /* border color */
-                         pixel); /* bg color */
-
-#ifdef DEBUG_PLUGIN_VIEWPORT
-  {
-  XSetWindowAttributes attribs;
-  attribs.background_pixel = 0xff0000;
-  XChangeWindowAttributes (xdpy, priv->plugin_viewport, CWBackPixel, &attribs);
-  }
-#endif
+  /* Initially the plugin viewport window will be parented on the root window,
+   * so we need to reparent it onto the stage so that we can align the plugin
+   * X windows with the corresponding ClutterGLXTexturePixmap actors. */
+  XReparentWindow (xdpy, priv->plugin_viewport, priv->stage_xwin, -100, -100);
 
   /* Note, unlike the individual plugin windows which we redirect using clutter,
    * we redirect the viewport window directly since we want to be sure we never
@@ -1068,6 +1043,12 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
                          plugin_viewport_x_event_filter,
                          (gpointer)mozembed);
 
+  /* We aim to close down gracefully, but if we fail to do so we must at
+   * least ensure that we don't destroy the plugin_viewport window since
+   * that would most likely cause the backend moz-headless process to crash.
+   */
+  XAddToSaveSet (xdpy, priv->plugin_viewport);
+
   XMapWindow (xdpy, priv->plugin_viewport);
 
   /* Make sure the window is mapped, or we can end up with unparented
@@ -1082,12 +1063,7 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
                     G_CALLBACK (reactive_change_cb),
                     NULL);
 
-  clutter_mozembed_comms_send (priv->output, CME_COMMAND_PLUGIN_WINDOW,
-                               G_TYPE_ULONG, (gulong)priv->plugin_viewport,
-                               G_TYPE_INVALID);
-
-  if (priv->pending_open)
-    clutter_mozembed_open (mozembed, priv->pending_url);
+  priv->plugin_viewport_initialized = TRUE;
 
   return TRUE;
 }
@@ -1117,8 +1093,7 @@ clutter_mozembed_map (ClutterActor *actor)
 
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->map (actor);
 
-  if (!clutter_mozembed_init_viewport (mozembed))
-    g_warning ("Failed to initialise plugin window");
+  clutter_mozembed_init_viewport (mozembed);
 
   for (p = priv->plugin_windows; p; p = p->next)
     {
@@ -1361,71 +1336,6 @@ clutter_mozembed_dispose (GObject *object)
 #ifdef SUPPORT_PLUGINS
   Display                *xdpy = clutter_x11_get_default_display ();
 
-  /* Note: we aren't using a saveset so this means any plugin
-   * windows currently mapped here are coming down with us too!
-   */
-  if (priv->plugin_viewport)
-    {
-      Window             root_win;
-      Window             parent_win;
-      Window            *children;
-      unsigned int       n_children;
-      XWindowAttributes  attribs;
-      Status             status;
-
-      gdk_window_remove_filter (NULL,
-                                plugin_viewport_x_event_filter,
-                                (gpointer)object);
-
-      clutter_mozembed_trap_x_errors ();
-      status  = XQueryTree (xdpy,
-                            priv->plugin_viewport,
-                            &root_win,
-                            &parent_win,
-                            &children,
-                            &n_children);
-      clutter_mozembed_untrap_x_errors ();
-      if (status != 0)
-        {
-          int           i;
-
-          /* To potentially support re-attaching to a mozheadless backend with
-           * plugin windows we could ask the mozheadless backend for a
-           * temporary parent for the plugins instead of using the stage. */
-          for (i = 0; i < n_children; i++)
-            {
-              int width = 1000;
-              int height = 1000;
-
-              clutter_mozembed_trap_x_errors ();
-
-              if (XGetWindowAttributes (xdpy, children[i], &attribs) != 0)
-                {
-                  width = attribs.width;
-                  height = attribs.height;
-                }
-
-              /* Make sure to position the plugin window offscreen so it doesn't
-               * interfere with input. */
-              /* XXX: There is the potential for the plugin window to be
-               * resized and become visible within the stage. */
-              XReparentWindow (xdpy,
-                               children[i],
-                               priv->stage_xwin,
-                               -width,
-                               -height);
-
-              XSync (xdpy, False);
-              clutter_mozembed_untrap_x_errors ();
-            }
-
-          XFree (children);
-        }
-
-      XDestroyWindow (xdpy, priv->plugin_viewport);
-      priv->plugin_viewport = 0;
-    }
-
   while (priv->plugin_windows)
     {
       PluginWindow *plugin_window = priv->plugin_windows->data;
@@ -1433,6 +1343,39 @@ clutter_mozembed_dispose (GObject *object)
       g_slice_free (PluginWindow, plugin_window);
       priv->plugin_windows = g_list_delete_link (priv->plugin_windows,
                                                  priv->plugin_windows);
+    }
+
+  if (priv->plugin_viewport_initialized)
+    {
+      XWindowAttributes  attribs;
+      int width = 1000;
+      int height = 1000;
+
+      gdk_window_remove_filter (NULL,
+                                plugin_viewport_x_event_filter,
+                                (gpointer)object);
+
+      clutter_mozembed_trap_x_errors ();
+
+      if (XGetWindowAttributes (xdpy, priv->plugin_viewport, &attribs) != 0)
+        {
+          width = attribs.width;
+          height = attribs.height;
+        }
+
+      XSync (xdpy, False);
+      clutter_mozembed_untrap_x_errors ();
+
+      XUnmapWindow (xdpy, priv->plugin_viewport);
+      XReparentWindow (xdpy,
+                       priv->plugin_viewport,
+                       XDefaultRootWindow (xdpy),
+                       -width,
+                       -height);
+      XRemoveFromSaveSet (xdpy, priv->plugin_viewport);
+      XSync (xdpy, False);
+
+      priv->plugin_viewport_initialized = FALSE;
     }
 #endif
 
@@ -1503,9 +1446,6 @@ clutter_mozembed_finalize (GObject *object)
   g_free (priv->input_file);
   g_free (priv->output_file);
   g_free (priv->shm_name);
-#ifdef SUPPORT_PLUGINS
-  g_free (priv->pending_url);
-#endif
 
   g_strfreev (priv->comp_paths);
   g_strfreev (priv->chrome_paths);
@@ -3014,28 +2954,10 @@ clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
-#ifdef SUPPORT_PLUGINS
-  if (!clutter_mozembed_init_viewport (mozembed))
-    {
-      priv->pending_open = TRUE;
-      priv->pending_url = g_strdup (uri);
-      return;
-    }
-#endif
-
   clutter_mozembed_comms_send (priv->output,
                                CME_COMMAND_OPEN_URL,
                                G_TYPE_STRING, uri,
                                G_TYPE_INVALID);
-
-#ifdef SUPPORT_PLUGINS
-  if (priv->pending_open)
-    {
-      priv->pending_open = FALSE;
-      g_free (priv->pending_url);
-      priv->pending_url = NULL;
-    }
-#endif
 }
 
 const gchar *
