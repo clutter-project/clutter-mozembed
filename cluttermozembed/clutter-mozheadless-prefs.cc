@@ -150,6 +150,8 @@ HeadlessPrefService::~HeadlessPrefService()
       mBranchById = NULL;
     }
 
+  mRootBranch = nsnull;
+
   if (mMhsPrefs)
     {
       g_signal_handlers_disconnect_by_func (mMhsPrefs,
@@ -424,6 +426,8 @@ HeadlessPrefBranch::HeadlessPrefBranch(MhsPrefs   *aMhsPrefs,
   : mObservers(nsnull)
 {
   mMhsPrefs = aMhsPrefs;
+  g_object_add_weak_pointer (G_OBJECT (aMhsPrefs), (gpointer *)&mMhsPrefs);
+
   mId = aId;
   mPrefRoot = aPrefRoot;
   mPrefRootLength = mPrefRoot.Length();
@@ -442,8 +446,11 @@ HeadlessPrefBranch::~HeadlessPrefBranch()
 {
   freeObserverList();
 
-  HeadlessPrefService *prefService = HeadlessPrefService::GetSingleton();
-  prefService->ReleaseBranch (mId);
+  if (mMhsPrefs)
+    {
+      HeadlessPrefService *prefService = HeadlessPrefService::GetSingleton();
+      prefService->ReleaseBranch (mId);
+    }
 }
 
 NS_IMPL_THREADSAFE_ADDREF(HeadlessPrefBranch)
@@ -476,6 +483,9 @@ HeadlessPrefBranch::GetPrefType(const char *aPrefName, PRInt32 *_retval)
   GError *error = NULL;
   gint type;
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   // g_debug ("GetType(%d, %s)", id, name);
   result = mhs_prefs_branch_get_type (mMhsPrefs,
                                       mId,
@@ -502,6 +512,9 @@ HeadlessPrefBranch::ClearUserPref(const char *aPrefName)
   gboolean result;
   GError *error = NULL;
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   // g_debug ("ClearUser(%d, %s)", id, name);
   result = mhs_prefs_branch_clear_user (mMhsPrefs,
                                         mId,
@@ -527,6 +540,9 @@ HeadlessPrefBranch::PrefHasUserValue(const char *aPrefName, PRBool *_retval)
   guint ns_result = NS_OK;
   gboolean result, has_value;
   GError *error = NULL;
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
 
   // g_debug ("HasUserValue(%d, %s)", id, name);
   result = mhs_prefs_branch_has_user_value (mMhsPrefs,
@@ -555,6 +571,9 @@ HeadlessPrefBranch::DeleteBranch(const char *aStartingAt)
   gboolean result;
   GError *error = NULL;
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   // g_debug ("Delete(%d, %s)", id, start);
   result = mhs_prefs_branch_delete (mMhsPrefs,
                                     mId,
@@ -579,6 +598,9 @@ HeadlessPrefBranch::ResetBranch(const char *aStartingAt)
 /*  guint ns_result = NS_OK;
   gboolean result;
   GError *error = NULL;
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
 
   // g_debug ("Reset(%d, %s)", id, start);
   result = mhs_prefs_branch_reset (mMhsPrefs,
@@ -608,6 +630,9 @@ HeadlessPrefBranch::GetChildList(const char   *aStartingAt,
   GError *error = NULL;
   gboolean result;
   guint count;
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
 
   // g_debug ("GetChildList(%d, %s)", id, start);
   *aCount = 0;
@@ -647,6 +672,9 @@ HeadlessPrefBranch::LockPref(const char *aPrefName)
   GError *error = NULL;
   gboolean result;
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   // g_debug ("Lock(%d, %s)", id, name);
   result = mhs_prefs_branch_lock (mMhsPrefs,
                                   mId,
@@ -669,6 +697,9 @@ HeadlessPrefBranch::PrefIsLocked(const char *aPrefName, PRBool *_retval)
   guint ns_result = NS_OK;
   gboolean result, value;
   GError *error = NULL;
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
 
   // g_debug ("IsLocked(%d, %s)", id, name);
   result = mhs_prefs_branch_is_locked (mMhsPrefs,
@@ -696,6 +727,9 @@ HeadlessPrefBranch::UnlockPref(const char *aPrefName)
   gboolean result;
   GError *error = NULL;
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   // g_debug ("Unlock(%d, %s)", id, name);
   result = mhs_prefs_branch_unlock (mMhsPrefs,
                                     mId,
@@ -718,6 +752,9 @@ HeadlessPrefBranch::GetBoolPref(const char *aPrefName, PRBool *_retval)
   guint ns_result = NS_OK;
   gboolean result, value;
   GError *error = NULL;
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
 
   // g_debug ("GetBool(%d, %s)", id, name);
   result = mhs_prefs_branch_get_bool (mMhsPrefs,
@@ -746,6 +783,9 @@ HeadlessPrefBranch::SetBoolPref(const char *aPrefName, PRInt32 aValue)
   GError *error = NULL;
   gboolean result;
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   // g_debug ("SetBool(%d, %s, %d)", id, name, value);
   result = mhs_prefs_branch_set_bool (mMhsPrefs,
                                       mId,
@@ -771,6 +811,9 @@ HeadlessPrefBranch::GetCharPref(const char *aPrefName, char **_retval)
   GError *error = NULL;
   gboolean result;
   gchar *value;
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
 
   // g_debug ("GetChar(%d, %s)", id, name);
   result = mhs_prefs_branch_get_char (mMhsPrefs,
@@ -802,6 +845,9 @@ HeadlessPrefBranch::SetCharPref(const char *aPrefName, const char *aValue)
   GError *error = NULL;
   gboolean result;
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   // g_debug ("SetChar(%d, %s, %s)", id, name, value);
   result = mhs_prefs_branch_set_char (mMhsPrefs,
                                       mId,
@@ -827,6 +873,9 @@ HeadlessPrefBranch::GetIntPref(const char *aPrefName, PRInt32 *_retval)
   GError *error = NULL;
   gboolean result;
   gint value;
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
 
   // g_debug ("GetInt(%d, %s)", mId, aPrefName);
   result = mhs_prefs_branch_get_int (mMhsPrefs,
@@ -855,6 +904,9 @@ HeadlessPrefBranch::SetIntPref(const char *aPrefName, PRInt32 aValue)
   gboolean result;
   GError *error = NULL;
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   // g_debug ("SetInt(%d, %s, %d)", id, name, value);
   result = mhs_prefs_branch_set_int (mMhsPrefs,
                                      mId,
@@ -882,6 +934,9 @@ HeadlessPrefBranch::GetComplexValue(const char *aPrefName,
 {
   nsresult rv;
   nsCString utf8String;
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
 
   // we have to do this one first because it's different than all the rest
   if (aType.Equals(NS_GET_IID(nsIPrefLocalizedString))) {
@@ -1030,6 +1085,9 @@ HeadlessPrefBranch::SetComplexValue(const char  *aPrefName,
 {
   nsresult   rv = NS_NOINTERFACE;
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   if (aType.Equals(NS_GET_IID(nsILocalFile))) {
     nsCOMPtr<nsILocalFile> file = do_QueryInterface(aValue);
     if (!file)
@@ -1124,6 +1182,9 @@ HeadlessPrefBranch::AddObserver(const char  *aDomain,
   NS_ENSURE_ARG_POINTER(aDomain);
   NS_ENSURE_ARG_POINTER(aObserver);
 
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
   if (!mObservers) {
     mObservers = new nsAutoVoidArray();
     if (!mObservers)
@@ -1186,6 +1247,9 @@ HeadlessPrefBranch::RemoveObserver(const char *aDomain, nsIObserver *aObserver)
 
   NS_ENSURE_ARG_POINTER(aDomain);
   NS_ENSURE_ARG_POINTER(aObserver);
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
 
   if (!mObservers)
     return NS_OK;
