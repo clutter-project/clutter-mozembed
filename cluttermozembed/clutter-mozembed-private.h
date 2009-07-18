@@ -31,7 +31,8 @@ ClutterMozEmbedDownload *clutter_mozembed_download_new (gint id,
                                                         const gchar *source,
                                                         const gchar *dest);
 void clutter_mozembed_download_set_progress (ClutterMozEmbedDownload *download,
-                                             gdouble                  progress);
+                                             gint64                   progress,
+                                             gint64                   max_progress);
 
 #endif /* _CLUTTER_MOZEMBED_PRIVATE */
 

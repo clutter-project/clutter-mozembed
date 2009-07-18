@@ -35,6 +35,7 @@ enum
   PROP_SOURCE,
   PROP_DESTINATION,
   PROP_PROGRESS,
+  PROP_MAX_PROGRESS,
 };
 
 enum
@@ -51,7 +52,8 @@ struct _ClutterMozEmbedDownloadPrivate
   gint     id;
   gchar   *source_uri;
   gchar   *dest_uri;
-  gdouble  progress;
+  gint64   progress;
+  gint64   max_progress;
 };
 
 static void
@@ -75,7 +77,11 @@ clutter_mozembed_download_get_property (GObject *object, guint property_id,
     break;
 
   case PROP_PROGRESS :
-    g_value_set_double (value, clutter_mozembed_download_get_progress (self));
+    g_value_set_int64 (value, clutter_mozembed_download_get_progress (self));
+    break;
+
+  case PROP_MAX_PROGRESS :
+    g_value_set_int64 (value, clutter_mozembed_download_get_max_progress (self));
     break;
 
   default:
@@ -178,14 +184,26 @@ clutter_mozembed_download_class_init (ClutterMozEmbedDownloadClass *klass)
 
   g_object_class_install_property (object_class,
                                    PROP_PROGRESS,
-                                   g_param_spec_double ("progress",
-                                                        "Progress",
-                                                        "Download progress.",
-                                                        0.0, 100.0, 0.0,
-                                                        G_PARAM_READABLE |
-                                                        G_PARAM_STATIC_NAME |
-                                                        G_PARAM_STATIC_NICK |
-                                                        G_PARAM_STATIC_BLURB));
+                                   g_param_spec_int64 ("progress",
+                                                       "Progress",
+                                                       "Download progress.",
+                                                       -1, G_MAXINT64, 0,
+                                                       G_PARAM_READABLE |
+                                                       G_PARAM_STATIC_NAME |
+                                                       G_PARAM_STATIC_NICK |
+                                                       G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_MAX_PROGRESS,
+                                   g_param_spec_int64 ("max-progress",
+                                                       "Max progress",
+                                                       "Maximum download "
+                                                       "progress.",
+                                                       -1, G_MAXINT64, 0,
+                                                       G_PARAM_READABLE |
+                                                       G_PARAM_STATIC_NAME |
+                                                       G_PARAM_STATIC_NICK |
+                                                       G_PARAM_STATIC_BLURB));
 
   signals[COMPLETE] =
     g_signal_new ("complete",
@@ -228,15 +246,22 @@ clutter_mozembed_download_get_destination (ClutterMozEmbedDownload *self)
   return self->priv->dest_uri;
 }
 
-gdouble
+gint64
 clutter_mozembed_download_get_progress (ClutterMozEmbedDownload *self)
 {
   return self->priv->progress;
 }
 
+gint64
+clutter_mozembed_download_get_max_progress (ClutterMozEmbedDownload *self)
+{
+  return self->priv->max_progress;
+}
+
 void
 clutter_mozembed_download_set_progress (ClutterMozEmbedDownload *self,
-                                        gdouble                  progress)
+                                        gint64                   progress,
+                                        gint64                   max_progress)
 {
   ClutterMozEmbedDownloadPrivate *priv = self->priv;
 
@@ -244,6 +269,12 @@ clutter_mozembed_download_set_progress (ClutterMozEmbedDownload *self,
     {
       priv->progress = progress;
       g_object_notify (G_OBJECT (self), "progress");
+    }
+
+  if (priv->max_progress != max_progress)
+    {
+      priv->max_progress = max_progress;
+      g_object_notify (G_OBJECT (self), "max-progress");
     }
 }
 

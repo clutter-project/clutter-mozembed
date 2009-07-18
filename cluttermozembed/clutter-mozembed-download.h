@@ -70,8 +70,11 @@ clutter_mozembed_download_get_source (ClutterMozEmbedDownload *self);
 const gchar *
 clutter_mozembed_download_get_destination (ClutterMozEmbedDownload *self);
 
-gdouble
+gint64
 clutter_mozembed_download_get_progress (ClutterMozEmbedDownload *self);
+
+gint64
+clutter_mozembed_download_get_max_progress (ClutterMozEmbedDownload *self);
 
 G_END_DECLS
 

@@ -654,7 +654,7 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
   else if (g_str_equal (command, "dl-progress"))
     {
       ClutterMozEmbedDownload *download;
-      gchar *params[2];
+      gchar *params[3];
 
       if (!separate_strings (params, G_N_ELEMENTS (params), detail))
         return;
@@ -662,7 +662,9 @@ process_feedback (ClutterMozEmbed *self, const gchar *command)
       download = g_hash_table_lookup (priv->downloads,
                                       GINT_TO_POINTER (atoi (params[0])));
       if (download)
-        clutter_mozembed_download_set_progress (download, atof (params[1]));
+        clutter_mozembed_download_set_progress (download,
+                                                atoll (params[1]),
+                                                atoll (params[2]));
     }
   else if (g_str_equal (command, "dl-complete"))
     {

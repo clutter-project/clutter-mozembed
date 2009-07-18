@@ -237,10 +237,10 @@ HeadlessDownloads::OnProgressChange64(nsIWebProgress *aWebProgress,
       /* FIXME: We almost certainly need to throttle this, or
        *        wait for acknowledgement from the embedder.
        */
-      gchar *feedback = g_strdup_printf ("dl-progress %d %lf",
+      gchar *feedback = g_strdup_printf ("dl-progress %d %lld %lld",
                                          mDownloadId,
-                                         aCurTotalProgress /
-                                         (gdouble)aMaxTotalProgress);
+                                         aCurTotalProgress,
+                                         aMaxTotalProgress);
       send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless), feedback);
       g_free (feedback);
     }
