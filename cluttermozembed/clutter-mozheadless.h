@@ -24,6 +24,7 @@
 #include <glib-object.h>
 #include <gio/gio.h>
 #include <moz-headless.h>
+#include "clutter-mozembed-comms.h"
 
 G_BEGIN_DECLS
 
@@ -80,12 +81,9 @@ typedef struct {
 GType clutter_mozheadless_get_type (void);
 
 void
-send_feedback (ClutterMozHeadlessView *view,
-               const gchar            *feedback);
-
-void
-send_feedback_all (ClutterMozHeadless     *headless,
-                   const gchar            *feedback);
+send_feedback_all (ClutterMozHeadless      *headless,
+                   ClutterMozEmbedFeedback  feedback,
+                   ...);
 
 G_END_DECLS
 

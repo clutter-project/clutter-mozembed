@@ -35,6 +35,7 @@
 #include <string.h>
 
 #include "clutter-mozheadless.h"
+#include "clutter-mozembed-comms.h"
 #include "clutter-mozheadless-history.h"
 #include "clutter-mozheadless-prefs.h"
 #include "clutter-mozheadless-downloads.h"
@@ -82,10 +83,10 @@ struct _ClutterMozHeadlessPrivate
   gint             surface_height;
 
   /* Synchronous call variables */
-  const gchar     *sync_call;
-  gchar           *new_input_file;
-  gchar           *new_output_file;
-  gchar           *new_shm_name;
+  ClutterMozEmbedCommand  sync_call;
+  gchar                  *new_input_file;
+  gchar                  *new_output_file;
+  gchar                  *new_shm_name;
 
   /* Connection timeout variables */
   guint            connect_timeout;
@@ -99,8 +100,8 @@ struct _ClutterMozHeadlessPrivate
 static GMainLoop *mainloop;
 static gint spawned_heads = 0;
 
-static void block_until_command (ClutterMozHeadless *moz_headless,
-                                 const gchar        *command);
+static void block_until_command (ClutterMozHeadless     *moz_headless,
+                                 ClutterMozEmbedCommand  command);
 
 static gboolean input_io_func (GIOChannel              *source,
                                GIOCondition             condition,
@@ -112,40 +113,36 @@ static void security_change_cb (ClutterMozHeadless *self,
                                 gpointer            ignored);
 
 void
-send_feedback (ClutterMozHeadlessView *view,
-               const gchar            *feedback)
-{
-  /*g_debug ("Sending feedback '%s' to view %p", feedback, view);*/
-  g_io_channel_write_chars (view->output, feedback,
-                            strlen (feedback) + 1, NULL, NULL);
-  g_io_channel_flush (view->output, NULL);
-}
-
-void
-send_feedback_all (ClutterMozHeadless     *headless,
-                   const gchar            *feedback)
+send_feedback_all (ClutterMozHeadless      *headless,
+                   ClutterMozEmbedFeedback  id,
+                   ...)
 {
   GList *v;
   ClutterMozHeadlessPrivate *priv = headless->priv;
 
+  va_list args;
+
   for (v = priv->views; v; v = v->next)
     {
       ClutterMozHeadlessView *view = v->data;
-      send_feedback (view, feedback);
+
+      va_start (args, id);
+      clutter_mozembed_comms_sendv (view->output, id, args);
+      va_end (args);
     }
 }
 
 static void
 location_cb (ClutterMozHeadless *headless)
 {
-  gchar *location, *feedback;
+  gchar *location;
   gboolean status, update;
   ClutterMozHeadlessPrivate *priv = headless->priv;
-  
+
   location = moz_headless_get_location (MOZ_HEADLESS (headless));
-  feedback = g_strdup_printf ("location %s", location);
-  
-  send_feedback_all (headless, feedback);
+  send_feedback_all (headless, CME_FEEDBACK_LOCATION,
+                     G_TYPE_STRING, location,
+                     G_TYPE_INVALID);
 
   status = update = (priv->security & CLUTTER_MOZEMBED_BAD_CERT) ? TRUE : FALSE;
   clutter_mozheadless_update_cert_status (location, &update);
@@ -159,35 +156,32 @@ location_cb (ClutterMozHeadless *headless)
       security_change_cb (headless, NULL, priv->security, NULL);
     }
 
-  g_free (feedback);
   g_free (location);
 }
 
 static void
 title_cb (ClutterMozHeadless *headless)
 {
-  gchar *title, *feedback;
-  
+  gchar *title;
+
   title = moz_headless_get_title (MOZ_HEADLESS (headless));
-  feedback = g_strdup_printf ("title %s", title);
-  
-  send_feedback_all (headless, feedback);
-  
-  g_free (feedback);
+  send_feedback_all (headless, CME_FEEDBACK_TITLE,
+                     G_TYPE_STRING, title,
+                     G_TYPE_INVALID);
+
   g_free (title);
 }
 
 static void
 icon_cb (ClutterMozHeadless *headless)
 {
-  gchar *icon, *feedback;
+  gchar *icon;
 
   icon = moz_headless_get_icon (MOZ_HEADLESS (headless));
-  feedback = g_strdup_printf ("icon %s", icon);
+  send_feedback_all (headless, CME_FEEDBACK_TITLE,
+                     G_TYPE_STRING, icon,
+                     G_TYPE_INVALID);
 
-  send_feedback_all (headless, feedback);
-
-  g_free (feedback);
   g_free (icon);
 }
 
@@ -196,27 +190,22 @@ progress_cb (ClutterMozHeadless *headless,
              gint                curprogress,
              gint                maxprogress)
 {
-  gchar *feedback;
-  gdouble progress;
-  
-  progress = curprogress / (gdouble)maxprogress;
-  feedback = g_strdup_printf ("progress %lf", progress);
-  
-  send_feedback_all (headless, feedback);
-  
-  g_free (feedback);
+  gdouble progress = curprogress / (gdouble)maxprogress;
+  send_feedback_all (headless, CME_FEEDBACK_PROGRESS,
+                     G_TYPE_DOUBLE, progress,
+                     G_TYPE_INVALID);
 }
 
 static void
 net_start_cb (ClutterMozHeadless *headless)
 {
-  send_feedback_all (headless, "net-start");
+  send_feedback_all (headless, CME_FEEDBACK_NET_START, G_TYPE_INVALID);
 }
 
 static void
 net_stop_cb (ClutterMozHeadless *headless)
 {
-  send_feedback_all (headless, "net-stop");
+  send_feedback_all (headless, CME_FEEDBACK_NET_STOP, G_TYPE_INVALID);
 }
 
 static gboolean
@@ -235,10 +224,9 @@ updated_cb (MozHeadless        *headless,
 {
   gint doc_width, doc_height, sx, sy;
   GList *v;
-  gchar *feedback;
-  
+
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (headless)->priv;
-  
+
   /*g_debug ("Update +%d+%d %dx%d", x, y, width, height);*/
 
   msync (priv->mmap_start, priv->mmap_length, MS_SYNC);
@@ -247,14 +235,19 @@ updated_cb (MozHeadless        *headless,
   moz_headless_get_scroll_pos (headless, &sx, &sy);
 
   /*g_debug ("Doc-size: %dx%d", doc_width, doc_height);*/
-  
-  feedback = g_strdup_printf ("update %d %d %d %d %d %d %d %d %d %d",
-                              x, y, width, height,
-                              priv->surface_width, priv->surface_height,
-                              sx, sy, doc_width, doc_height);
-  send_feedback_all (CLUTTER_MOZHEADLESS (headless), feedback);
-  g_free (feedback);
-  
+  send_feedback_all (CLUTTER_MOZHEADLESS (headless), CME_FEEDBACK_UPDATE,
+                     G_TYPE_INT, x,
+                     G_TYPE_INT, y,
+                     G_TYPE_INT, width,
+                     G_TYPE_INT, height,
+                     G_TYPE_INT, priv->surface_width,
+                     G_TYPE_INT, priv->surface_height,
+                     G_TYPE_INT, sx,
+                     G_TYPE_INT, sy,
+                     G_TYPE_INT, doc_width,
+                     G_TYPE_INT, doc_height,
+                     G_TYPE_INVALID);
+
   for (v = priv->views; v; v = v->next)
     {
       ClutterMozHeadlessView *view = v->data;
@@ -275,15 +268,14 @@ updated_cb (MozHeadless        *headless,
 static void
 new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
 {
-  gchar *feedback;
-
   ClutterMozHeadless *moz_headless = CLUTTER_MOZHEADLESS (headless);
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
+  ClutterMozHeadlessView *view = (ClutterMozHeadlessView *)priv->views->data;
 
-  feedback = g_strdup_printf ("new-window? %d", chromemask);
-  send_feedback ((ClutterMozHeadlessView *)priv->views->data, feedback);
-  g_free (feedback);
-  block_until_command (moz_headless, "new-window-response");
+  clutter_mozembed_comms_send (view->output, CME_FEEDBACK_NEW_WINDOW,
+                               G_TYPE_INT, chromemask,
+                               G_TYPE_INVALID);
+  block_until_command (moz_headless, CME_COMMAND_NEW_WINDOW_RESPONSE);
 
   if (priv->new_input_file && priv->new_output_file && priv->new_shm_name)
     {
@@ -311,45 +303,38 @@ new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
 static void
 destroy_browser_cb (ClutterMozHeadless *moz_headless)
 {
-  send_feedback_all (moz_headless, "closed");
+  send_feedback_all (moz_headless, CME_FEEDBACK_CLOSED, G_TYPE_INVALID);
 }
 
 static void
 link_message_cb (ClutterMozHeadless *self)
 {
-  gchar *feedback, *message;
-
-  message = moz_headless_get_link_message (MOZ_HEADLESS (self));
-  feedback = g_strconcat ("link ", message, NULL);
+  gchar *message = moz_headless_get_link_message (MOZ_HEADLESS (self));
+  send_feedback_all (self, CME_FEEDBACK_LINK_MESSAGE,
+                     G_TYPE_STRING, message,
+                     G_TYPE_INVALID);
   g_free (message);
-
-  send_feedback_all (self, feedback);
-
-  g_free (feedback);
 }
 
 static void
 can_go_back_cb (ClutterMozHeadless *self, gboolean can_go_back)
 {
-  gchar *feedback =
-    g_strdup_printf ("back %d", can_go_back);
-  send_feedback_all (self, feedback);
-  g_free (feedback);
+  send_feedback_all (self, CME_FEEDBACK_CAN_GO_BACK,
+                     G_TYPE_BOOLEAN, can_go_back,
+                     G_TYPE_INVALID);
 }
 
 static void
 can_go_forward_cb (ClutterMozHeadless *self, gboolean can_go_forward)
 {
-  gchar *feedback =
-    g_strdup_printf ("forward %d", can_go_forward);
-  send_feedback_all (self, feedback);
-  g_free (feedback);
+  send_feedback_all (self, CME_FEEDBACK_CAN_GO_FORWARD,
+                     G_TYPE_BOOLEAN, can_go_forward,
+                     G_TYPE_INVALID);
 }
 
 static void
 size_to_cb (ClutterMozHeadless *self, gint width, gint height)
 {
-  gchar *feedback;
   ClutterMozHeadlessView *primary_view;
 
   ClutterMozHeadlessPrivate *priv = self->priv;
@@ -358,9 +343,11 @@ size_to_cb (ClutterMozHeadless *self, gint width, gint height)
     return;
 
   primary_view = (ClutterMozHeadlessView *)priv->views->data;
-  feedback = g_strdup_printf ("size-request %d %d", width, height);
-  send_feedback (primary_view, feedback);
-  g_free (feedback);
+  clutter_mozembed_comms_send (primary_view->output,
+                               CME_FEEDBACK_SIZE_REQUEST,
+                               G_TYPE_INT, width,
+                               G_TYPE_INT, height,
+                               G_TYPE_INVALID);
 }
 
 static void
@@ -369,13 +356,12 @@ security_change_cb (ClutterMozHeadless *self,
                     guint               state,
                     gpointer            ignored)
 {
-  gchar *feedback;
   ClutterMozHeadlessPrivate *priv = self->priv;
 
   priv->security = state | (priv->security & CLUTTER_MOZEMBED_BAD_CERT);
-  feedback = g_strdup_printf ("security %d", priv->security);
-  send_feedback_all (self, feedback);
-  g_free (feedback);
+  send_feedback_all (self, CME_FEEDBACK_SECURITY,
+                     G_TYPE_INT, priv->security,
+                     G_TYPE_INVALID);
 }
 
 static void
@@ -384,15 +370,17 @@ show_tooltip_cb (ClutterMozHeadless *self,
                  gint                x,
                  gint                y)
 {
-  gchar *feedback = g_strdup_printf ("show-tip %d %d %s", x, y, text);
-  send_feedback_all (self, feedback);
-  g_free (feedback);
+  send_feedback_all (self, CME_FEEDBACK_SHOW_TOOLTIP,
+                     G_TYPE_INT, x,
+                     G_TYPE_INT, y,
+                     G_TYPE_STRING, text,
+                     G_TYPE_INVALID);
 }
 
 static void
 hide_tooltip_cb (ClutterMozHeadless *self)
 {
-  send_feedback_all (self, "hide-tip");
+  send_feedback_all (self, CME_FEEDBACK_HIDE_TOOLTIP, G_TYPE_INVALID);
 }
 
 static void
@@ -404,7 +392,6 @@ file_changed_cb (GFileMonitor           *monitor,
 {
   gint fd;
   gint doc_width, doc_height, sx, sy;
-  gchar *feedback;
 
   ClutterMozHeadlessPrivate *priv = view->parent->priv;
 
@@ -429,9 +416,9 @@ file_changed_cb (GFileMonitor           *monitor,
                                    view);
 
   /* Send the shm name and an update to the new view */
-  feedback = g_strdup_printf ("shm-name %s", priv->shm_name);
-  send_feedback (view, feedback);
-  g_free (feedback);
+  clutter_mozembed_comms_send (view->output, CME_FEEDBACK_SHM_NAME,
+                               G_TYPE_STRING, priv->shm_name,
+                               G_TYPE_INVALID);
 
   moz_headless_get_document_size (MOZ_HEADLESS (view->parent),
                                   &doc_width, &doc_height);
@@ -440,12 +427,18 @@ file_changed_cb (GFileMonitor           *monitor,
   /* If we have an active surface, send an update to this new view */
   if (priv->mmap_start)
     {
-      feedback = g_strdup_printf ("update 0 0 %d %d %d %d %d %d %d %d",
-                                  priv->surface_width, priv->surface_height,
-                                  priv->surface_width, priv->surface_height,
-                                  sx, sy, doc_width, doc_height);
-      send_feedback (view, feedback);
-      g_free (feedback);
+      clutter_mozembed_comms_send (view->output, CME_FEEDBACK_UPDATE,
+                                   G_TYPE_INT, 0,
+                                   G_TYPE_INT, 0,
+                                   G_TYPE_INT, priv->surface_width,
+                                   G_TYPE_INT, priv->surface_height,
+                                   G_TYPE_INT, priv->surface_width,
+                                   G_TYPE_INT, priv->surface_height,
+                                   G_TYPE_INT, sx,
+                                   G_TYPE_INT, sy,
+                                   G_TYPE_INT, doc_width,
+                                   G_TYPE_INT, doc_height,
+                                   G_TYPE_INVALID);
 
       if (!priv->waiting_for_ack)
         moz_headless_freeze_updates (MOZ_HEADLESS (view->parent), TRUE);
@@ -455,20 +448,23 @@ file_changed_cb (GFileMonitor           *monitor,
     }
 
   /* Inform if we're private */
+  /* FIXME: I don't think we need to do this */
   if (priv->private)
-    send_feedback (view, "private 1");
+    clutter_mozembed_comms_send (view->output, CME_FEEDBACK_PRIVATE,
+                                 G_TYPE_BOOLEAN, TRUE,
+                                 G_TYPE_INVALID);
 }
 
 static void
-cursor_changed_cb (MozHeadlessCursorType type,
-                   MozHeadlessCursor *special,
-                   gpointer data)
+cursor_changed_cb (MozHeadlessCursorType    type,
+                   const MozHeadlessCursor *special,
+                   gpointer                 data)
 {
   ClutterMozHeadless *mozheadless = data;
   /* TODO - support special cursors */
-  char *feedback = g_strdup_printf ("cursor %d", type);
-  send_feedback_all (mozheadless, feedback);
-  g_free (feedback);
+  send_feedback_all (mozheadless, CME_FEEDBACK_CURSOR,
+                     G_TYPE_INT, type,
+                     G_TYPE_INVALID);
 }
 
 static void
@@ -507,35 +503,12 @@ clutter_mozheadless_create_view (ClutterMozHeadless *self,
 }
 
 static gboolean
-separate_strings (gchar **strings, gint n_strings, gchar *string)
-{
-  gint i;
-  gboolean success = TRUE;
-
-  if (!string)
-    return FALSE;
-
-  strings[0] = string;
-  for (i = 0; i < n_strings - 1; i++)
-    {
-      gchar *string = strchr (strings[i], ' ');
-      if (!string)
-        {
-          success = FALSE;
-          break;
-        }
-      string[0] = '\0';
-      strings[i+1] = string + 1;
-    }
-
-  return success;
-}
-
-static gboolean
 send_mack (ClutterMozHeadlessView *view)
 {
   view->mack_source = 0;
-  send_feedback (view, "mack");
+  clutter_mozembed_comms_send (view->output,
+                               CME_FEEDBACK_MOTION_ACK,
+                               G_TYPE_INVALID);
   return FALSE;
 }
 
@@ -579,286 +552,306 @@ clutter_moz_headless_unfreeze (ClutterMozHeadless *moz_headless)
 }
 
 static void
-process_command (ClutterMozHeadlessView *view, gchar *command)
+process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
 {
-  gchar *detail;
-  
   ClutterMozHeadless *moz_headless = view->parent;
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
   MozHeadless *headless = MOZ_HEADLESS (moz_headless);
-  
-  /*g_debug ("Processing command: %s", command);*/
-  
-  /* TODO: Of course, we should make this a binary format - it's this way 
-   *       to ease debugging.
-   */
-  
-  detail = strchr (command, ' ');
-  if (detail)
-    {
-      detail[0] = '\0';
-      detail++;
-    }
 
-  if (priv->sync_call && g_str_equal (command, priv->sync_call))
-    priv->sync_call = NULL;
+  /*g_debug ("Processing command: %d", command);*/
 
-  if (g_str_equal (command, "ack!"))
-    {
-      view->waiting_for_ack = FALSE;
-      priv->waiting_for_ack --;
+  if (priv->sync_call && (priv->sync_call == command))
+    priv->sync_call = 0;
 
-      if (priv->waiting_for_ack == 0)
-        clutter_moz_headless_unfreeze (moz_headless);
-    }
-  else if (g_str_equal (command, "open"))
+  switch (command)
     {
-      moz_headless_load_url (headless, detail);
-    }
-  else if (g_str_equal (command, "resize"))
-    {
-      gchar *params[2];
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-      
-      priv->surface_width = atoi (params[0]);
-      priv->surface_height = atoi (params[1]);
-
-      if (priv->waiting_for_ack)
-        priv->pending_resize = TRUE;
-      else
-        clutter_moz_headless_resize (moz_headless);
-    }
-  else if (g_str_equal (command, "motion"))
-    {
-      gint x, y;
-      MozHeadlessModifier m;
-      gchar *params[3];
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-      
-      x = atoi (params[0]);
-      y = atoi (params[1]);
-      m = atoi (params[2]);
-      
-      moz_headless_motion (headless, x, y, m);
-      
-      /* This is done so that we definitely get to do any redrawing before we
-       * send an acknowledgement.
-       */
-      if (!view->mack_source)
-        view->mack_source =
-          g_idle_add_full (G_PRIORITY_LOW, (GSourceFunc)send_mack, view, NULL);
-      else
-        g_warning ("Received a motion event before sending acknowledgement");
-    }
-  else if (g_str_equal (command, "button-press"))
-    {
-      gint x, y, b, c;
-      MozHeadlessModifier m;
-      gchar *params[5];
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-      
-      x = atoi (params[0]);
-      y = atoi (params[1]);
-      b = atoi (params[2]);
-      c = atoi (params[3]);
-      m = atoi (params[4]);
-      
-      moz_headless_button_press (headless, x, y, b, c, m);
-    }
-  else if (g_str_equal (command, "button-release"))
-    {
-      gint x, y, b;
-      MozHeadlessModifier m;
-      gchar *params[4];
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-      
-      x = atoi (params[0]);
-      y = atoi (params[1]);
-      b = atoi (params[2]);
-      m = atoi (params[3]);
-      
-      moz_headless_button_release (headless, x, y, b, m);
-    }
-  else if (g_str_equal (command, "key-press"))
-    {
-      gchar *params[3];
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-
-      moz_headless_key_press (headless, (MozHeadlessKey)atoi (params[0]),
-                              (gunichar)atoi (params[1]),
-                              (MozHeadlessModifier)atoi (params[2]));
-    }
-  else if (g_str_equal (command, "key-release"))
-    {
-      gchar *params[2];
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-
-      moz_headless_key_release (headless, (MozHeadlessKey)atoi (params[0]),
-                                (MozHeadlessModifier)atoi (params[1]));
-    }
-  else if (g_str_equal (command, "scroll"))
-    {
-      gint dx, dy;
-      gchar *params[2];
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-      
-      dx = atoi (params[0]);
-      dy = atoi (params[1]);
-      
-      moz_headless_scroll (headless, dx, dy);
-    }
-  else if (g_str_equal (command, "scroll-to"))
-    {
-      gint x, y;
-      gchar *params[2];
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-
-      x = atoi (params[0]);
-      y = atoi (params[1]);
-
-      moz_headless_set_scroll_pos (headless, x, y);
-    }
-  else if (g_str_equal (command, "can-go-back?"))
-    {
-      gchar *feedback =
-        g_strdup_printf ("back %d", moz_headless_can_go_back (headless));
-      send_feedback (view, feedback);
-      g_free (feedback);
-    }
-  else if (g_str_equal (command, "can-go-forward?"))
-    {
-      gchar *feedback =
-        g_strdup_printf ("forward %d", moz_headless_can_go_forward (headless));
-      send_feedback (view, feedback);
-      g_free (feedback);
-    }
-  else if (g_str_equal (command, "shm-name?"))
-    {
-      gchar *feedback = g_strdup_printf ("shm-name %s", priv->shm_name);
-      send_feedback (view, feedback);
-      g_free (feedback);
-    }
-  else if (g_str_equal (command, "drawing?"))
-    {
-    }
-  else if (g_str_equal (command, "back"))
-    {
-      moz_headless_go_back (headless);
-    }
-  else if (g_str_equal (command, "forward"))
-    {
-      moz_headless_go_forward (headless);
-    }
-  else if (g_str_equal (command, "stop"))
-    {
-      moz_headless_stop_load (headless);
-    }
-  else if (g_str_equal (command, "refresh"))
-    {
-      moz_headless_reload (headless, MOZ_HEADLESS_FLAG_RELOADNORMAL);
-    }
-  else if (g_str_equal (command, "reload"))
-    {
-      moz_headless_reload (headless, MOZ_HEADLESS_FLAG_RELOADBYPASSCACHE);
-    }
-  else if (g_str_equal (command, "set-chrome"))
-    {
-      gchar *params[1];
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-
-      moz_headless_set_chrome_mask (headless, atoi (params[0]));
-    }
-  else if (g_str_equal (command, "toggle-chrome"))
-    {
-      guint32 chrome;
-      gchar *params[1];
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-
-      chrome = moz_headless_get_chrome_mask (headless);
-      chrome ^= atoi (params[0]);
-      moz_headless_set_chrome_mask (headless, chrome);
-    }
-  else if (g_str_equal (command, "quit"))
-    {
-      send_feedback_all (moz_headless, "closed");
-      g_object_unref (moz_headless);
-    }
-  else if (g_str_equal (command, "new-view"))
-    {
-      gchar *params[2];
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-      
-      clutter_mozheadless_create_view (moz_headless,
-                                       g_strdup (params[0]),
-                                       g_strdup (params[1]));
-    }
-  else if (g_str_equal (command, "new-window-response") ||
-           g_str_equal (command, "new-window"))
-    {
-      gchar *params[3];
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
+      case CME_COMMAND_UPDATE_ACK :
         {
-          g_free (priv->new_input_file);
-          priv->new_input_file = NULL;
-          g_free (priv->new_output_file);
-          priv->new_output_file = NULL;
-          g_free (priv->new_shm_name);
-          priv->new_shm_name = NULL;
-          return;
+          view->waiting_for_ack = FALSE;
+          priv->waiting_for_ack --;
+
+          if (priv->waiting_for_ack == 0)
+            clutter_moz_headless_unfreeze (moz_headless);
+
+          break;
         }
-
-      if (g_str_equal (command, "new-window"))
+      case CME_COMMAND_OPEN_URL :
         {
+          gchar *url = clutter_mozembed_comms_receive_string (view->input);
+          moz_headless_load_url (headless, url);
+          g_free (url);
+          break;
+        }
+      case CME_COMMAND_RESIZE :
+        {
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_INT, &priv->surface_width,
+                                          G_TYPE_INT, &priv->surface_height,
+                                          G_TYPE_INVALID);
+
+          if (priv->waiting_for_ack)
+            priv->pending_resize = TRUE;
+          else
+            clutter_moz_headless_resize (moz_headless);
+
+          break;
+        }
+      case CME_COMMAND_MOTION :
+        {
+          gint x, y;
+          MozHeadlessModifier m;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_INT, &x,
+                                          G_TYPE_INT, &y,
+                                          G_TYPE_INT, &m,
+                                          G_TYPE_INVALID);
+
+          moz_headless_motion (headless, x, y, m);
+
+          /* This is done so that we definitely get to do any redrawing before we
+           * send an acknowledgement.
+           */
+          if (!view->mack_source)
+            view->mack_source =
+              g_idle_add_full (G_PRIORITY_LOW, (GSourceFunc)send_mack, view, NULL);
+          else
+            g_warning ("Received a motion event before sending acknowledgement");
+
+          break;
+        }
+      case CME_COMMAND_BUTTON_PRESS :
+        {
+          gint x, y, button, count;
+          MozHeadlessModifier m;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_INT, &x,
+                                          G_TYPE_INT, &y,
+                                          G_TYPE_INT, &button,
+                                          G_TYPE_INT, &count,
+                                          G_TYPE_INT, &m,
+                                          G_TYPE_INVALID);
+
+          moz_headless_button_press (headless, x, y, button, count, m);
+
+          break;
+        }
+      case CME_COMMAND_BUTTON_RELEASE :
+        {
+          gint x, y, button;
+          MozHeadlessModifier m;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_INT, &x,
+                                          G_TYPE_INT, &y,
+                                          G_TYPE_INT, &button,
+                                          G_TYPE_INT, &m,
+                                          G_TYPE_INVALID);
+
+          moz_headless_button_release (headless, x, y, button, m);
+
+          break;
+        }
+      case CME_COMMAND_KEY_PRESS :
+        {
+          MozHeadlessKey key;
+          gunichar unicode_char;
+          MozHeadlessModifier m;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_INT, &key,
+                                          G_TYPE_INT, &unicode_char,
+                                          G_TYPE_INT, &m,
+                                          G_TYPE_INVALID);
+
+          moz_headless_key_press (headless, key, unicode_char, m);
+
+          break;
+        }
+      case CME_COMMAND_KEY_RELEASE :
+        {
+          MozHeadlessKey key;
+          MozHeadlessModifier m;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_INT, &key,
+                                          G_TYPE_INT, &m,
+                                          G_TYPE_INVALID);
+
+          moz_headless_key_release (headless, key, m);
+
+          break;
+        }
+      case CME_COMMAND_SCROLL :
+        {
+          gint dx, dy;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_INT, &dx,
+                                          G_TYPE_INT, &dy,
+                                          G_TYPE_INVALID);
+
+          moz_headless_scroll (headless, dx, dy);
+
+          break;
+        }
+      case CME_COMMAND_SCROLL_TO :
+        {
+          gint x, y;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_INT, &x,
+                                          G_TYPE_INT, &y,
+                                          G_TYPE_INVALID);
+
+          moz_headless_set_scroll_pos (headless, x, y);
+
+          break;
+        }
+      case CME_COMMAND_GET_CAN_GO_BACK :
+        {
+          clutter_mozembed_comms_send (view->output,
+                                       CME_FEEDBACK_CAN_GO_BACK,
+                                       G_TYPE_BOOLEAN,
+                                       moz_headless_can_go_back (headless),
+                                       G_TYPE_INVALID);
+          break;
+        }
+      case CME_COMMAND_GET_CAN_GO_FORWARD :
+        {
+          clutter_mozembed_comms_send (view->output,
+                                       CME_FEEDBACK_CAN_GO_FORWARD,
+                                       G_TYPE_BOOLEAN,
+                                       moz_headless_can_go_back (headless),
+                                       G_TYPE_INVALID);
+          break;
+        }
+      case CME_COMMAND_GET_SHM_NAME :
+        {
+          clutter_mozembed_comms_send (view->output,
+                                       CME_FEEDBACK_SHM_NAME,
+                                       G_TYPE_STRING, priv->shm_name,
+                                       G_TYPE_INVALID);
+          break;
+        }
+      case CME_COMMAND_BACK :
+        {
+          moz_headless_go_back (headless);
+          break;
+        }
+      case CME_COMMAND_FORWARD :
+        {
+          moz_headless_go_forward (headless);
+          break;
+        }
+      case CME_COMMAND_STOP :
+        {
+          moz_headless_stop_load (headless);
+          break;
+        }
+      case CME_COMMAND_REFRESH :
+        {
+          moz_headless_reload (headless, MOZ_HEADLESS_FLAG_RELOADNORMAL);
+          break;
+        }
+      case CME_COMMAND_RELOAD :
+        {
+          moz_headless_reload (headless, MOZ_HEADLESS_FLAG_RELOADBYPASSCACHE);
+          break;
+        }
+      case CME_COMMAND_SET_CHROME :
+        {
+          gint chrome = clutter_mozembed_comms_receive_int (view->input);
+          moz_headless_set_chrome_mask (headless, chrome);
+          break;
+        }
+      case CME_COMMAND_TOGGLE_CHROME :
+        {
+          guint32 chrome = moz_headless_get_chrome_mask (headless);
+          chrome ^= clutter_mozembed_comms_receive_int (view->input);
+          moz_headless_set_chrome_mask (headless, chrome);
+          break;
+        }
+      case CME_COMMAND_QUIT :
+        {
+          /* FIXME: Er, will this unref not cause a crash? Must check this... */
+          send_feedback_all (moz_headless, CME_FEEDBACK_CLOSED, G_TYPE_INVALID);
+          g_object_unref (moz_headless);
+          break;
+        }
+      case CME_COMMAND_NEW_VIEW :
+        {
+          gchar *input, *output;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_STRING, &input,
+                                          G_TYPE_STRING, &output,
+                                          G_TYPE_INVALID);
+
+          clutter_mozheadless_create_view (moz_headless, input, output);
+
+          g_free (input);
+          g_free (output);
+
+          break;
+        }
+      case CME_COMMAND_NEW_WINDOW :
+        {
+          gchar *input, *output, *shm;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_STRING, &input,
+                                          G_TYPE_STRING, &output,
+                                          G_TYPE_STRING, &shm,
+                                          G_TYPE_INVALID);
+
           g_object_new (CLUTTER_TYPE_MOZHEADLESS,
-                        "input", params[0],
-                        "output", params[1],
-                        "shm", params[2],
+                        "input", input,
+                        "output", output,
+                        "shm", shm,
                         "private", priv->private,
                         NULL);
-        }
-      else
-        {
-          priv->new_input_file = g_strdup (params[0]);
-          priv->new_output_file = g_strdup (params[1]);
-          priv->new_shm_name = g_strdup (params[2]);
-        }
-    }
-  else if (g_str_equal (command, "focus"))
-    {
-      if (!detail)
-        return;
 
-      moz_headless_focus (MOZ_HEADLESS (moz_headless), atoi (detail));
-    }
-#ifdef SUPPORT_PLUGINS
-  else if (g_str_equal (command, "plugin-window"))
-    {
-      Window viewport_window = (Window)strtoul (detail, NULL, 10);
-      moz_headless_set_plugin_window (MOZ_HEADLESS (moz_headless),
-                                      viewport_window);
-    }
-#endif
-  else
-    {
-      g_warning ("Unrecognised command: %s", command);
+          break;
+        }
+      case CME_COMMAND_NEW_WINDOW_RESPONSE :
+        {
+          if (clutter_mozembed_comms_receive_boolean (view->input))
+            {
+              clutter_mozembed_comms_receive (view->input,
+                                              G_TYPE_STRING, &priv->new_input_file,
+                                              G_TYPE_STRING, &priv->new_output_file,
+                                              G_TYPE_STRING, &priv->new_shm_name,
+                                              G_TYPE_INVALID);
+            }
+          else
+            {
+              g_free (priv->new_input_file);
+              priv->new_input_file = NULL;
+              g_free (priv->new_output_file);
+              priv->new_output_file = NULL;
+              g_free (priv->new_shm_name);
+              priv->new_shm_name = NULL;
+            }
+          break;
+        }
+      case CME_COMMAND_FOCUS :
+        {
+          gboolean focus = clutter_mozembed_comms_receive_boolean (view->input);
+          moz_headless_focus (MOZ_HEADLESS (moz_headless), focus);
+          break;
+        }
+      case CME_COMMAND_PLUGIN_WINDOW :
+        {
+          Window viewport_window = (Window)
+            clutter_mozembed_comms_receive_ulong (view->input);
+          moz_headless_set_plugin_window (MOZ_HEADLESS (moz_headless),
+                                          viewport_window);
+          break;
+        }
+      default :
+        g_warning ("Unknown command (%d)", command);
     }
 }
 
@@ -938,7 +931,7 @@ input_io_func (GIOChannel              *source,
                ClutterMozHeadlessView  *view)
 {
   /* FYI: Maximum URL length in IE is 2083 characters */
-  gchar buf[4096];
+  ClutterMozEmbedCommand command;
   gsize length;
   GError *error = NULL;
   gboolean result = TRUE;
@@ -946,7 +939,7 @@ input_io_func (GIOChannel              *source,
   ClutterMozHeadless *moz_headless = view->parent;
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
 
-  if (condition & (G_IO_PRI | G_IO_IN))
+  while (condition & (G_IO_PRI | G_IO_IN))
     {
       GIOStatus status;
 
@@ -957,17 +950,14 @@ input_io_func (GIOChannel              *source,
           priv->connect_timeout_source = 0;
         }
 
-      status = g_io_channel_read_chars (source, buf, sizeof (buf), &length,
+      status = g_io_channel_read_chars (source,
+                                        (gchar *)(&command),
+                                        sizeof (command),
+                                        &length,
                                         &error);
       if (status == G_IO_STATUS_NORMAL)
         {
-          gsize current_length = 0;
-          while (current_length < length)
-            {
-              gchar *command = &buf[current_length];
-              current_length += strlen (&buf[current_length]) + 1;
-              process_command (view, command);
-            }
+          process_command (view, command);
         }
       else if (status == G_IO_STATUS_ERROR)
         {
@@ -980,7 +970,8 @@ input_io_func (GIOChannel              *source,
           g_warning ("End of file");
           result = FALSE;
         }
-      /* Do nothing if status is G_IO_STATUS_AGAIN */
+
+      condition = g_io_channel_get_buffer_condition (source);
     }
 
   if (condition & G_IO_HUP)
@@ -1021,13 +1012,14 @@ input_io_func (GIOChannel              *source,
 }
 
 static void
-block_until_command (ClutterMozHeadless *moz_headless, const gchar *command)
+block_until_command (ClutterMozHeadless     *moz_headless,
+                     ClutterMozEmbedCommand  command)
 {
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
   ClutterMozHeadlessView *view = priv->views->data;
-  
+
   priv->sync_call = command;
-  
+
   /* FIXME: There needs to be a time limit here, or we can hang if the front-end
    *        hangs. Here or in input_io_func anyway...
    */

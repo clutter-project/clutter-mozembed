@@ -66,9 +66,10 @@ HeadlessDownloads::HeadlessDownloads()
 HeadlessDownloads::~HeadlessDownloads()
 {
   if (mMozHeadless) {
-    gchar *feedback = g_strdup_printf ("dl-complete %d", mDownloadId);
-    send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless), feedback);
-    g_free (feedback);
+    send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
+                       CME_FEEDBACK_DL_COMPLETE,
+                       G_TYPE_INT, mDownloadId,
+                       G_TYPE_INVALID);
 
     g_object_unref (G_OBJECT (mMozHeadless));
     mMozHeadless = NULL;
@@ -153,13 +154,12 @@ HeadlessDownloads::PromptForSaveToFile(nsIHelperAppLauncher  *aLauncher,
               {
                 const char *uri_string = ns_uri_string.get();
                 const char *file_uri_string = ns_file_uri_string.get();
-                gchar *feedback = g_strdup_printf ("dl-start %d %s %s",
-                                                   mDownloadId,
-                                                   uri_string,
-                                                   file_uri_string);
                 send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
-                                   feedback);
-                g_free (feedback);
+                                   CME_FEEDBACK_DL_START,
+                                   G_TYPE_INT, mDownloadId,
+                                   G_TYPE_STRING, uri_string,
+                                   G_TYPE_STRING, file_uri_string,
+                                   G_TYPE_INVALID);
               }
           }
       }
@@ -237,12 +237,12 @@ HeadlessDownloads::OnProgressChange64(nsIWebProgress *aWebProgress,
       /* FIXME: We almost certainly need to throttle this, or
        *        wait for acknowledgement from the embedder.
        */
-      gchar *feedback = g_strdup_printf ("dl-progress %d %lld %lld",
-                                         mDownloadId,
-                                         aCurTotalProgress,
-                                         aMaxTotalProgress);
-      send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless), feedback);
-      g_free (feedback);
+      send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
+                         CME_FEEDBACK_DL_PROGRESS,
+                         G_TYPE_INT, mDownloadId,
+                         G_TYPE_INT64, (gint64)aCurTotalProgress,
+                         G_TYPE_INT64, (gint64)aMaxTotalProgress,
+                         G_TYPE_INVALID);
     }
 
   return NS_OK;

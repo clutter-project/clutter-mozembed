@@ -20,6 +20,7 @@
 #include <config.h>
 
 #include "clutter-mozembed.h"
+#include "clutter-mozembed-comms.h"
 #include "clutter-mozembed-private.h"
 #include "clutter-mozembed-marshal.h"
 #include <glib/gstdio.h>
@@ -123,7 +124,7 @@ struct _ClutterMozEmbedPrivate
   ClutterModifierType motion_m;
 
   /* Variables for synchronous calls */
-  const gchar     *sync_call;
+  ClutterMozEmbedFeedback sync_call;
 
   /* Locally cached properties */
   gchar           *location;
@@ -199,28 +200,6 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed);
 static int trapped_x_error = 0;
 static int (*prev_error_handler) (Display *, XErrorEvent *);
 #endif
-
-static gboolean
-separate_strings (gchar **strings, gint n_strings, gchar *string)
-{
-  gint i;
-  gboolean success = TRUE;
-  
-  strings[0] = string;
-  for (i = 0; i < n_strings - 1; i++)
-    {
-      gchar *string = strchr (strings[i], ' ');
-      if (!string)
-        {
-          success = FALSE;
-          break;
-        }
-      string[0] = '\0';
-      strings[i+1] = string + 1;
-    }
-  
-  return success;
-}
 
 static void
 clamp_offset (ClutterMozEmbed *self)
@@ -318,40 +297,17 @@ update (ClutterMozEmbed *self,
     }
 }
 
-void
-send_command (ClutterMozEmbed *mozembed, const gchar *command)
-{
-  if (!command)
-    return;
-
-  if (!mozembed->priv->output)
-    {
-      g_warning ("Child process is not available");
-      return;
-    }
-  
-  if ((mozembed->priv->read_only) && (command[strlen(command)-1] != '?') &&
-      (command[strlen(command)-1] != '!'))
-    return;
-  
-  /*g_debug ("Sending command: %s", command);*/
-  
-  /* TODO: Error handling */
-  g_io_channel_write_chars (mozembed->priv->output, command,
-                            strlen (command) + 1, NULL, NULL);
-  g_io_channel_flush (mozembed->priv->output, NULL);
-}
-
 static void
 send_motion_event (ClutterMozEmbed *self)
 {
   ClutterMozEmbedPrivate *priv = self->priv;
-  gchar *command = g_strdup_printf ("motion %d %d %u",
-                                    priv->motion_x, priv->motion_y,
-                                    clutter_mozembed_get_modifier (
-                                      priv->motion_m));
-  send_command (self, command);
-  g_free (command);
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_MOTION,
+                               G_TYPE_INT, priv->motion_x,
+                               G_TYPE_INT, priv->motion_y,
+                               G_TYPE_UINT, clutter_mozembed_get_modifier (
+                                              priv->motion_m),
+                               G_TYPE_INVALID);
   priv->pending_motion = FALSE;
 }
 
@@ -369,347 +325,329 @@ static gboolean
 clutter_mozembed_repaint_func (ClutterMozEmbed *self)
 {
   /* Send the paint acknowledgement */
-  send_command (self, "ack!");
+  clutter_mozembed_comms_send (self->priv->output,
+                               CME_COMMAND_UPDATE_ACK,
+                               G_TYPE_INVALID);
   self->priv->repaint_id = 0;
   return FALSE;
 }
 
 static void
-process_feedback (ClutterMozEmbed *self, const gchar *command)
+process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
 {
-  gchar *detail;
-
   ClutterMozEmbedPrivate *priv = self->priv;
 
-  /*g_debug ("Processing feedback: %s", command);*/
+  /*g_debug ("Processing feedback: %d", feedback);*/
 
-  detail = strchr (command, ' ');
-  if (detail)
+  if (priv->sync_call && (priv->sync_call == feedback))
+    priv->sync_call = 0;
+
+  switch (feedback)
     {
-      detail[0] = '\0';
-      detail++;
-    }
+    case CME_FEEDBACK_UPDATE :
+      {
+        gint x, y, width, height, surface_width, surface_height,
+             doc_width, doc_height, scroll_x, scroll_y;
 
-  if (priv->sync_call && g_str_equal (command, priv->sync_call))
-    priv->sync_call = NULL;
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_INT, &x,
+                                        G_TYPE_INT, &y,
+                                        G_TYPE_INT, &width,
+                                        G_TYPE_INT, &height,
+                                        G_TYPE_INT, &surface_width,
+                                        G_TYPE_INT, &surface_height,
+                                        G_TYPE_INT, &scroll_x,
+                                        G_TYPE_INT, &scroll_y,
+                                        G_TYPE_INT, &doc_width,
+                                        G_TYPE_INT, &doc_height,
+                                        G_TYPE_INVALID);
 
-  if (g_str_equal (command, "update"))
-    {
-      gint x, y, width, height, surface_width, surface_height, dx, dy, sx, sy;
+        if (priv->doc_width != doc_width)
+          {
+            priv->doc_width = doc_width;
+            g_object_notify (G_OBJECT (self), "doc-width");
+          }
+        if (priv->doc_height != doc_height)
+          {
+            priv->doc_height = doc_height;
+            g_object_notify (G_OBJECT (self), "doc-height");
+          }
 
-      gchar *params[10];
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
+        /* Update async scrolling offset */
+        if (priv->offset_x)
+          priv->offset_x += scroll_x - priv->scroll_x;
+        if (priv->offset_y)
+          priv->offset_y += scroll_y - priv->scroll_y;
 
-      x = atoi (params[0]);
-      y = atoi (params[1]);
-      width = atoi (params[2]);
-      height = atoi (params[3]);
-      surface_width = atoi (params[4]);
-      surface_height = atoi (params[5]);
-      sx = atoi (params[6]);
-      sy = atoi (params[7]);
-      dx = atoi (params[8]);
-      dy = atoi (params[9]);
+        /* Clamp in case document size has changed */
+        if (priv->scroll_x != scroll_x)
+          {
+            priv->scroll_x = scroll_x;
+            g_object_notify (G_OBJECT (self), "scroll-x");
+          }
+        if (priv->scroll_y != scroll_y)
+          {
+            priv->scroll_y = scroll_y;
+            g_object_notify (G_OBJECT (self), "scroll-y");
+          }
+        clamp_offset (self);
 
-      if (priv->doc_width != dx)
-        {
-          priv->doc_width = dx;
-          g_object_notify (G_OBJECT (self), "doc-width");
-        }
-      if (priv->doc_height != dy)
-        {
-          priv->doc_height = dy;
-          g_object_notify (G_OBJECT (self), "doc-height");
-        }
+        update (self, x, y, width, height, surface_width, surface_height);
 
-      /* Update async scrolling offset */
-      if (priv->offset_x)
-        priv->offset_x += sx - priv->scroll_x;
-      if (priv->offset_y)
-        priv->offset_y += sy - priv->scroll_y;
+        priv->repaint_id =
+          clutter_threads_add_repaint_func ((GSourceFunc)
+                                            clutter_mozembed_repaint_func,
+                                            self,
+                                            NULL);
+        clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
+        break;
+      }
+    case CME_FEEDBACK_MOTION_ACK :
+      {
+        priv->motion_ack = TRUE;
 
-      /* Clamp in case document size has changed */
-      if (priv->scroll_x != sx)
-        {
-          priv->scroll_x = sx;
-          g_object_notify (G_OBJECT (self), "scroll-x");
-        }
-      if (priv->scroll_y != sy)
-        {
-          priv->scroll_y = sy;
-          g_object_notify (G_OBJECT (self), "scroll-y");
-        }
-      clamp_offset (self);
+        if (priv->pending_motion)
+          {
+            send_motion_event (self);
+            priv->motion_ack = FALSE;
+            priv->pending_motion = FALSE;
+          }
+        break;
+      }
+    case CME_FEEDBACK_PROGRESS :
+      {
+        priv->progress = clutter_mozembed_comms_receive_double (priv->input);
+        g_signal_emit (self, signals[PROGRESS], 0, priv->progress);
+        break;
+      }
+    case CME_FEEDBACK_NET_START :
+      {
+        priv->is_loading = TRUE;
+        priv->progress = 0.0;
+        g_signal_emit (self, signals[NET_START], 0);
+        break;
+      }
+    case CME_FEEDBACK_NET_STOP :
+      {
+        priv->is_loading = FALSE;
+        g_signal_emit (self, signals[NET_STOP], 0);
+        break;
+      }
+    case CME_FEEDBACK_LOCATION :
+      {
+        g_free (priv->location);
+        priv->location = clutter_mozembed_comms_receive_string (priv->input);
+        g_object_notify (G_OBJECT (self), "location");
+        break;
+      }
+    case CME_FEEDBACK_TITLE :
+      {
+        g_free (priv->title);
+        priv->title = clutter_mozembed_comms_receive_string (priv->input);
+        g_object_notify (G_OBJECT (self), "title");
+        break;
+      }
+    case CME_FEEDBACK_ICON :
+      {
+        g_free (priv->icon);
+        priv->icon = clutter_mozembed_comms_receive_string (priv->input);
+        g_object_notify (G_OBJECT (self), "icon");
+        break;
+      }
+    case CME_FEEDBACK_CAN_GO_BACK :
+      {
+        gboolean can_go_back =
+          clutter_mozembed_comms_receive_boolean (priv->input);
+        if (priv->can_go_back != can_go_back)
+          {
+            priv->can_go_back = can_go_back;
+            g_object_notify (G_OBJECT (self), "can-go-back");
+          }
+        break;
+      }
+    case CME_FEEDBACK_CAN_GO_FORWARD :
+      {
+        gboolean can_go_forward =
+          clutter_mozembed_comms_receive_boolean (priv->input);
+        if (priv->can_go_forward != can_go_forward)
+          {
+            priv->can_go_forward = can_go_forward;
+            g_object_notify (G_OBJECT (self), "can-go-forward");
+          }
+        break;
+      }
+    case CME_FEEDBACK_NEW_WINDOW :
+      {
+        ClutterMozEmbed *new_window = NULL;
+        guint chrome = clutter_mozembed_comms_receive_uint (priv->input);
 
-      update (self, x, y, width, height, surface_width, surface_height);
+        /* Find out if the new window is received */
+        g_signal_emit (self, signals[NEW_WINDOW], 0, &new_window, chrome);
 
-      priv->repaint_id =
-        clutter_threads_add_repaint_func ((GSourceFunc)
-                                          clutter_mozembed_repaint_func,
-                                          self,
-                                          NULL);
-      clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
-    }
-  else if (g_str_equal (command, "mack"))
-    {
-      priv->motion_ack = TRUE;
-
-      if (priv->pending_motion)
-        {
-          send_motion_event (self);
-          priv->motion_ack = FALSE;
-          priv->pending_motion = FALSE;
-        }
-    }
-  else if (g_str_equal (command, "progress"))
-    {
-      gchar *params[1];
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-
-      priv->progress = atof (params[0]);
-
-      g_signal_emit (self, signals[PROGRESS], 0, priv->progress);
-    }
-  else if (g_str_equal (command, "location"))
-    {
-      g_free (priv->location);
-      priv->location = NULL;
-
-      if (!detail)
-        return;
-
-      priv->location = g_strdup (detail);
-      g_object_notify (G_OBJECT (self), "location");
-    }
-  else if (g_str_equal (command, "title"))
-    {
-      g_free (priv->title);
-      priv->title = NULL;
-
-      if (!detail)
-        return;
-
-      priv->title = g_strdup (detail);
-      g_object_notify (G_OBJECT (self), "title");
-    }
-  else if (g_str_equal (command, "icon"))
-    {
-      g_free (priv->icon);
-      priv->icon = NULL;
-
-      if (!detail)
-        return;
-
-      priv->icon = g_strdup (detail);
-      g_object_notify (G_OBJECT (self), "icon");
-    }
-  else if (g_str_equal (command, "net-start"))
-    {
-      priv->is_loading = TRUE;
-      priv->progress = 0.0;
-      g_signal_emit (self, signals[NET_START], 0);
-    }
-  else if (g_str_equal (command, "net-stop"))
-    {
-      priv->is_loading = FALSE;
-      g_signal_emit (self, signals[NET_STOP], 0);
-    }
-  else if (g_str_equal (command, "back"))
-    {
-      gchar *params[1];
-      gboolean back;
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-
-      back = atoi (params[0]);
-
-      if (priv->can_go_back != back)
-        {
-          priv->can_go_back = back;
-          g_object_notify (G_OBJECT (self), "can-go-back");
-        }
-    }
-  else if (g_str_equal (command, "forward"))
-    {
-      gchar *params[1];
-      gboolean forward;
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-
-      forward = atoi (params[0]);
-
-      if (priv->can_go_forward != forward)
-        {
-          priv->can_go_forward = forward;
-          g_object_notify (G_OBJECT (self), "can-go-forward");
-        }
-    }
-  else if (g_str_equal (command, "new-window?"))
-    {
-      ClutterMozEmbed *new_window;
-      gchar *params[1];
-
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
-
-      new_window = NULL;
-
-      /* Find out if the new window is received */
-      g_signal_emit (self, signals[NEW_WINDOW], 0,
-                     &new_window, (guint)atoi (params[0]));
-
-      /* If it is, send its details to the backend */
-      if (new_window)
-        {
-          gchar *output_file, *input_file, *shm_name, *command;
+        /* If it is, send its details to the backend */
+        if (new_window)
+          {
+            gchar *output_file, *input_file, *shm_name;
 
 #ifdef SUPPORT_PLUGINS
-          clutter_mozembed_init_viewport (new_window);
+            clutter_mozembed_init_viewport (new_window);
 #endif
 
-          output_file = input_file = shm_name = NULL;
-          g_object_get (G_OBJECT (new_window),
-                        "output", &output_file,
-                        "input", &input_file,
-                        "shm", &shm_name,
-                        NULL);
+            output_file = input_file = shm_name = NULL;
+            g_object_get (G_OBJECT (new_window),
+                          "output", &output_file,
+                          "input", &input_file,
+                          "shm", &shm_name,
+                          NULL);
 
-          command = g_strdup_printf ("new-window-response %s %s %s",
-                                     input_file, output_file, shm_name);
-          send_command (self, command);
-          g_free (command);
-        }
-      else
-        send_command (self, "new-window-response");
-    }
-  else if (g_str_equal (command, "closed"))
-    {
-      /* If we're in dispose, watch_id will be zero */
-      if (priv->watch_id)
-        g_signal_emit (self, signals[CLOSED], 0);
-    }
-  else if (g_str_equal (command, "link"))
-    {
-      g_signal_emit (self, signals[LINK_MESSAGE], 0, detail);
-    }
-  else if (g_str_equal (command, "size-request"))
-    {
-      gchar *params[2];
+            clutter_mozembed_comms_send (priv->output,
+                                         CME_COMMAND_NEW_WINDOW_RESPONSE,
+                                         G_TYPE_BOOLEAN, TRUE,
+                                         G_TYPE_STRING, input_file,
+                                         G_TYPE_STRING, output_file,
+                                         G_TYPE_STRING, shm_name,
+                                         G_TYPE_INVALID);
 
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
+            g_free (output_file);
+            g_free (input_file);
+            g_free (shm_name);
+          }
+        else
+          clutter_mozembed_comms_send (priv->output,
+                                       CME_COMMAND_NEW_WINDOW_RESPONSE,
+                                       G_TYPE_BOOLEAN, FALSE,
+                                       G_TYPE_INVALID);
 
-      g_signal_emit (self, signals[SIZE_REQUEST], 0,
-                     atoi (params[0]), atoi (params[1]));
-    }
-  else if (g_str_equal (command, "shm-name"))
-    {
-      g_free (priv->shm_name);
-      priv->shm_name = g_strdup (detail);
-    }
-  else if (g_str_equal (command, "cursor"))
-    {
-      gchar *params[1];
-      int cursor;
+        break;
+      }
+    case CME_FEEDBACK_CLOSED :
+      {
+        /* If we're in dispose, watch_id will be zero */
+        if (priv->watch_id)
+          g_signal_emit (self, signals[CLOSED], 0);
+        break;
+      }
+    case CME_FEEDBACK_LINK_MESSAGE :
+      {
+        gchar *link = clutter_mozembed_comms_receive_string (priv->input);
+        g_signal_emit (self, signals[LINK_MESSAGE], 0, link);
+        g_free (link);
+        break;
+      }
+    case CME_FEEDBACK_SIZE_REQUEST :
+      {
+        gint width, height;
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_INT, &width,
+                                        G_TYPE_INT, &height,
+                                        G_TYPE_INVALID);
+        g_signal_emit (self, signals[SIZE_REQUEST], 0, width, height);
+        break;
+      }
+    case CME_FEEDBACK_SHM_NAME :
+      {
+        g_free (priv->shm_name);
+        priv->shm_name = clutter_mozembed_comms_receive_string (priv->input);
+        break;
+      }
+    case CME_FEEDBACK_CURSOR :
+      {
+        priv->cursor = clutter_mozembed_comms_receive_int (priv->input);
+        g_object_notify (G_OBJECT (self), "cursor");
+        break;
+      }
+    case CME_FEEDBACK_SECURITY :
+      {
+        priv->security = clutter_mozembed_comms_receive_int (priv->input);
+        g_object_notify (G_OBJECT (self), "security");
+        break;
+      }
+    case CME_FEEDBACK_DL_START :
+      {
+        gint id;
+        gchar *source, *dest;
+        ClutterMozEmbedDownload *download;
 
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_INT, &id,
+                                        G_TYPE_STRING, &source,
+                                        G_TYPE_STRING, &dest,
+                                        G_TYPE_INVALID);
 
-      cursor = atoi (params[0]);
+        download = clutter_mozembed_download_new (id, source, dest);
+        g_hash_table_insert (priv->downloads, GINT_TO_POINTER (id), download);
+        g_signal_connect (download, "complete",
+                          G_CALLBACK (_download_complete_cb), self);
+        g_signal_emit (self, signals[DOWNLOAD], 0, download);
 
-      priv->cursor = cursor;
-      g_object_notify (G_OBJECT (self), "cursor");
-    }
-  else if (g_str_equal (command, "security"))
-    {
-      gchar *params[1];
+        break;
+      }
+    case CME_FEEDBACK_DL_PROGRESS :
+      {
+        gint id;
+        gint64 progress, max_progress;
+        ClutterMozEmbedDownload *download;
 
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_INT, &id,
+                                        G_TYPE_INT64, &progress,
+                                        G_TYPE_INT64, &max_progress,
+                                        G_TYPE_INVALID);
 
-      priv->security = atoi (params[0]);
-      g_object_notify (G_OBJECT (self), "security");
-    }
-  else if (g_str_equal (command, "dl-start"))
-    {
-      ClutterMozEmbedDownload *download;
-      gchar *params[3];
-      gint id;
+        download = g_hash_table_lookup (priv->downloads, GINT_TO_POINTER (id));
+        if (download)
+          clutter_mozembed_download_set_progress (download,
+                                                  progress,
+                                                  max_progress);
 
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
+        break;
+      }
+    case CME_FEEDBACK_DL_COMPLETE :
+      {
+        ClutterMozEmbedDownload *download;
 
-      id = atoi (params[0]);
-      download = clutter_mozembed_download_new (id, params[1], params[2]);
-      g_hash_table_insert (priv->downloads, GINT_TO_POINTER (id), download);
-      g_signal_connect (download, "complete",
-                        G_CALLBACK (_download_complete_cb), self);
-      g_signal_emit (self, signals[DOWNLOAD], 0, download);
-    }
-  else if (g_str_equal (command, "dl-progress"))
-    {
-      ClutterMozEmbedDownload *download;
-      gchar *params[3];
+        gint id = clutter_mozembed_comms_receive_int (priv->input);
 
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
+        download = g_hash_table_lookup (priv->downloads, GINT_TO_POINTER (id));
+        if (download)
+          g_signal_emit_by_name (download, "complete");
 
-      download = g_hash_table_lookup (priv->downloads,
-                                      GINT_TO_POINTER (atoi (params[0])));
-      if (download)
-        clutter_mozembed_download_set_progress (download,
-                                                atoll (params[1]),
-                                                atoll (params[2]));
-    }
-  else if (g_str_equal (command, "dl-complete"))
-    {
-      ClutterMozEmbedDownload *download;
-      gchar *params[1];
+        break;
+      }
+    case CME_FEEDBACK_SHOW_TOOLTIP :
+      {
+        gint x, y;
+        gchar *tooltip;
 
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_INT, &x,
+                                        G_TYPE_INT, &y,
+                                        G_TYPE_STRING, &tooltip,
+                                        G_TYPE_INVALID);
 
-      download = g_hash_table_lookup (priv->downloads,
-                                      GINT_TO_POINTER (atoi (params[0])));
-      if (download)
-        g_signal_emit_by_name (download, "complete");
-    }
-  else if (g_str_equal (command, "show-tip"))
-    {
-      gchar *params[3];
+        g_signal_emit (self, signals[SHOW_TOOLTIP], 0, tooltip, x, y);
 
-      if (!separate_strings (params, G_N_ELEMENTS (params), detail))
-        return;
+        break;
+      }
+    case CME_FEEDBACK_HIDE_TOOLTIP :
+      {
+        g_signal_emit (self, signals[HIDE_TOOLTIP], 0);
+        break;
+      }
+    case CME_FEEDBACK_PRIVATE :
+      {
+        gboolean private = clutter_mozembed_comms_receive_boolean (priv->input);
 
-      g_signal_emit (self, signals[SHOW_TOOLTIP], 0, params[2],
-                     atoi (params[0]), atoi (params[1]));
-    }
-  else if (g_str_equal (command, "hide-tip"))
-    {
-      g_signal_emit (self, signals[HIDE_TOOLTIP], 0);
-    }
-  else if (g_str_equal (command, "private"))
-    {
-      gboolean private;
+        if (priv->private != private)
+          {
+            priv->private = private;
+            g_object_notify (G_OBJECT (self), "private");
+          }
 
-      if (!detail)
-        return;
-
-      private = atoi (detail);
-      if (priv->private != private)
-        {
-          priv->private = private;
-          g_object_notify (G_OBJECT (self), "private");
-        }
-    }
-  else
-    {
-      g_warning ("Unrecognised feedback: %s", command);
+        break;
+      }
+    default :
+      g_warning ("Unrecognised feedback received (%d)", feedback);
     }
 }
 
@@ -719,37 +657,36 @@ input_io_func (GIOChannel      *source,
                ClutterMozEmbed *self)
 {
   /* FYI: Maximum URL length in IE is 2083 characters */
-  gchar buf[4096];
+  ClutterMozEmbedFeedback feedback;
   gsize length;
   GError *error = NULL;
   gboolean result = TRUE;
 
-  if (condition & (G_IO_PRI | G_IO_IN))
+  while (condition & (G_IO_PRI | G_IO_IN))
     {
-      GIOStatus status = g_io_channel_read_chars (source, buf, sizeof (buf),
+      GIOStatus status = g_io_channel_read_chars (source,
+                                                  (gchar *)(&feedback),
+                                                  sizeof (feedback),
                                                   &length, &error);
       if (status == G_IO_STATUS_NORMAL)
         {
-          gsize current_length = 0;
-          while (current_length < length)
-            {
-              gchar *feedback = &buf[current_length];
-              current_length += strlen (&buf[current_length]) + 1;
-              process_feedback (self, feedback);
-            }
+          process_feedback (self, feedback);
         }
       else if (status == G_IO_STATUS_ERROR)
         {
           g_warning ("Error reading from source: %s", error->message);
           g_error_free (error);
           result = FALSE;
+          break;
         }
       else if (status == G_IO_STATUS_EOF)
         {
           g_warning ("Reached end of input pipe");
           result = FALSE;
+          break;
         }
-      /* do nothing if status is G_IO_STATUS_AGAIN */
+
+      condition = g_io_channel_get_buffer_condition (source);
     }
 
   if (condition & G_IO_HUP)
@@ -777,7 +714,8 @@ input_io_func (GIOChannel      *source,
 }
 
 void
-block_until_feedback (ClutterMozEmbed *mozembed, const gchar *feedback)
+block_until_feedback (ClutterMozEmbed         *mozembed,
+                      ClutterMozEmbedFeedback  feedback)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
@@ -1009,7 +947,6 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
   ClutterActor *stage;
   unsigned long pixel;
   int composite_major, composite_minor;
-  gchar *command;
 
   if (priv->plugin_viewport)
     return TRUE;
@@ -1109,10 +1046,9 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
                     G_CALLBACK (reactive_change_cb),
                     NULL);
 
-  command = g_strdup_printf ("plugin-window %lu",
-                             (gulong)priv->plugin_viewport);
-  send_command (mozembed, command);
-  g_free (command);
+  clutter_mozembed_comms_send (priv->output, CME_COMMAND_PLUGIN_WINDOW,
+                               G_TYPE_ULONG, (gulong)priv->plugin_viewport,
+                               G_TYPE_INVALID);
 
   if (priv->pending_open)
     clutter_mozembed_open (mozembed, priv->pending_url);
@@ -1649,7 +1585,6 @@ clutter_mozembed_allocate (ClutterActor           *actor,
                            const ClutterActorBox  *box,
                            ClutterAllocationFlags  flags)
 {
-  gchar *command;
   gint width, height, tex_width, tex_height;
   ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = mozembed->priv;
@@ -1673,9 +1608,11 @@ clutter_mozembed_allocate (ClutterActor           *actor,
         }
 
       /* Send a resize command to the back-end */
-      command = g_strdup_printf ("resize %d %d", width, height);
-      send_command (CLUTTER_MOZEMBED (actor), command);
-      g_free (command);
+      clutter_mozembed_comms_send (priv->output,
+                                   CME_COMMAND_RESIZE,
+                                   G_TYPE_INT, width,
+                                   G_TYPE_INT, height,
+                                   G_TYPE_INVALID);
     }
 
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->
@@ -1776,13 +1713,21 @@ clutter_mozembed_get_modifier (ClutterModifierType modifiers)
 static void
 clutter_mozembed_key_focus_in (ClutterActor *actor)
 {
-  send_command (CLUTTER_MOZEMBED (actor), "focus 1");
+  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (actor)->priv;
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_FOCUS,
+                               G_TYPE_BOOLEAN, TRUE,
+                               G_TYPE_INVALID);
 }
 
 static void
 clutter_mozembed_key_focus_out (ClutterActor *actor)
 {
-  send_command (CLUTTER_MOZEMBED (actor), "focus 0");
+  ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (actor)->priv;
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_FOCUS,
+                               G_TYPE_BOOLEAN, FALSE,
+                               G_TYPE_INVALID);
 }
 
 static gboolean
@@ -1826,7 +1771,6 @@ clutter_mozembed_button_press_event (ClutterActor *actor,
 {
   ClutterMozEmbedPrivate *priv;
   gfloat x_out, y_out;
-  gchar *command;
 
   priv = CLUTTER_MOZEMBED (actor)->priv;
 
@@ -1838,15 +1782,15 @@ clutter_mozembed_button_press_event (ClutterActor *actor,
 
   clutter_grab_pointer (actor);
 
-  command =
-    g_strdup_printf ("button-press %d %d %d %d %u",
-                     (gint)x_out,
-                     (gint)y_out,
-                     event->button,
-                     event->click_count,
-                     clutter_mozembed_get_modifier (event->modifier_state));
-  send_command (CLUTTER_MOZEMBED (actor), command);
-  g_free (command);
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_BUTTON_PRESS,
+                               G_TYPE_INT, (gint)x_out,
+                               G_TYPE_INT, (gint)y_out,
+                               G_TYPE_INT, event->button,
+                               G_TYPE_INT, event->click_count,
+                               G_TYPE_UINT, clutter_mozembed_get_modifier (
+                                              event->modifier_state),
+                               G_TYPE_INVALID);
 
   return TRUE;
 }
@@ -1857,7 +1801,6 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
 {
   ClutterMozEmbedPrivate *priv;
   gfloat x_out, y_out;
-  gchar *command;
 
   clutter_ungrab_pointer ();
 
@@ -1869,14 +1812,14 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
                                             &x_out, &y_out))
     return FALSE;
 
-  command =
-    g_strdup_printf ("button-release %d %d %d %u",
-                     (gint)x_out,
-                     (gint)y_out,
-                     event->button,
-                     clutter_mozembed_get_modifier (event->modifier_state));
-  send_command (CLUTTER_MOZEMBED (actor), command);
-  g_free (command);
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_BUTTON_RELEASE,
+                               G_TYPE_INT, (gint)x_out,
+                               G_TYPE_INT, (gint)y_out,
+                               G_TYPE_INT, event->button,
+                               G_TYPE_UINT, clutter_mozembed_get_modifier (
+                                              event->modifier_state),
+                               G_TYPE_INVALID);
 
   return TRUE;
 }
@@ -2112,7 +2055,6 @@ static gboolean
 clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
 {
   ClutterMozEmbedPrivate *priv;
-  gchar *command;
   guint keyval;
 
   priv = CLUTTER_MOZEMBED (actor)->priv;
@@ -2121,10 +2063,13 @@ clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
       (event->unicode_value == '\0'))
     return FALSE;
 
-  command = g_strdup_printf ("key-press %u %u %u", keyval, event->unicode_value,
-                             clutter_mozembed_get_modifier (event->modifier_state));
-  send_command (CLUTTER_MOZEMBED (actor), command);
-  g_free (command);
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_KEY_PRESS,
+                               G_TYPE_UINT, keyval,
+                               G_TYPE_UINT, event->unicode_value,
+                               G_TYPE_UINT, clutter_mozembed_get_modifier (
+                                              event->modifier_state),
+                               G_TYPE_INVALID);
 
   return TRUE;
 }
@@ -2139,11 +2084,12 @@ clutter_mozembed_key_release_event (ClutterActor *actor, ClutterKeyEvent *event)
 
   if (clutter_mozembed_get_keyval (event, &keyval))
     {
-      gchar *command =
-        g_strdup_printf ("key-release %u %u", keyval,
-                         clutter_mozembed_get_modifier (event->modifier_state));
-      send_command (CLUTTER_MOZEMBED (actor), command);
-      g_free (command);
+      clutter_mozembed_comms_send (priv->output,
+                                   CME_COMMAND_KEY_RELEASE,
+                                   G_TYPE_UINT, keyval,
+                                   G_TYPE_UINT, clutter_mozembed_get_modifier (
+                                                  event->modifier_state),
+                                   G_TYPE_INVALID);
       return TRUE;
     }
 
@@ -2156,7 +2102,6 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
 {
   ClutterMozEmbedPrivate *priv;
   gfloat x_out, y_out;
-  gchar *command;
   gint button;
 
   priv = CLUTTER_MOZEMBED (actor)->priv;
@@ -2205,15 +2150,15 @@ clutter_mozembed_scroll_event (ClutterActor *actor,
         }
     }
 
-  command =
-    g_strdup_printf ("button-press %d %d %d %d %u",
-                     (gint)x_out,
-                     (gint)y_out,
-                     button,
-                     1,
-                     clutter_mozembed_get_modifier (event->modifier_state));
-  send_command (CLUTTER_MOZEMBED (actor), command);
-  g_free (command);
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_BUTTON_PRESS,
+                               G_TYPE_INT, (gint)x_out,
+                               G_TYPE_INT, (gint)y_out,
+                               G_TYPE_INT, button,
+                               G_TYPE_INT, 1,
+                               G_TYPE_UINT, clutter_mozembed_get_modifier (
+                                              event->modifier_state),
+                               G_TYPE_INVALID);
 
   return TRUE;
 }
@@ -2962,7 +2907,7 @@ clutter_mozembed_new (void)
 ClutterActor *
 clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
 {
-  gchar *input, *output, *shm, *command;
+  gchar *input, *output, *shm;
   ClutterActor *mozembed;
 
   if (!parent)
@@ -2979,9 +2924,16 @@ clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
                 NULL);
   CLUTTER_MOZEMBED (mozembed)->priv->private = parent->priv->private;
 
-  command = g_strdup_printf ("new-window %s %s %s", input, output, shm);
-  send_command (parent, command);
-  g_free (command);
+  clutter_mozembed_comms_send (parent->priv->output,
+                               CME_COMMAND_NEW_WINDOW,
+                               G_TYPE_STRING, input,
+                               G_TYPE_STRING, output,
+                               G_TYPE_STRING, shm,
+                               G_TYPE_INVALID);
+
+  g_free (input);
+  g_free (output);
+  g_free (shm);
 
   return mozembed;
 }
@@ -2997,7 +2949,7 @@ clutter_mozembed_new_view (void)
 {
   ClutterMozEmbed *mozembed;
 
- /* Create a read-only mozembed */
+  /* Create a read-only mozembed */
   mozembed = g_object_new (CLUTTER_TYPE_MOZEMBED,
                            "read-only", TRUE,
                            "spawn", FALSE,
@@ -3011,19 +2963,19 @@ clutter_mozembed_connect_view (ClutterMozEmbed *mozembed,
                                const gchar     *input,
                                const gchar     *output)
 {
-  gchar *command;
-
-  command = g_strdup_printf ("new-view %s %s", input, output);
-  send_command (mozembed, command);
-  g_free (command);
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_NEW_VIEW,
+                               G_TYPE_STRING, input,
+                               G_TYPE_STRING, output,
+                               G_TYPE_INVALID);
 }
 
 void
 clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri)
 {
-#ifdef SUPPORT_PLUGINS
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
+#ifdef SUPPORT_PLUGINS
   if (!clutter_mozembed_init_viewport (mozembed))
     {
       priv->pending_open = TRUE;
@@ -3032,9 +2984,10 @@ clutter_mozembed_open (ClutterMozEmbed *mozembed, const gchar *uri)
     }
 #endif
 
-  gchar *command = g_strdup_printf ("open %s", uri);
-  send_command (mozembed, command);
-  g_free (command);
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_OPEN_URL,
+                               G_TYPE_STRING, uri,
+                               G_TYPE_INVALID);
 
 #ifdef SUPPORT_PLUGINS
   if (priv->pending_open)
@@ -3084,31 +3037,41 @@ clutter_mozembed_can_go_forward (ClutterMozEmbed *mozembed)
 void
 clutter_mozembed_back (ClutterMozEmbed *mozembed)
 {
-  send_command (mozembed, "back");
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_BACK,
+                               G_TYPE_INVALID);
 }
 
 void
 clutter_mozembed_forward (ClutterMozEmbed *mozembed)
 {
-  send_command (mozembed, "forward");
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_FORWARD,
+                               G_TYPE_INVALID);
 }
 
 void
 clutter_mozembed_stop (ClutterMozEmbed *mozembed)
 {
-  send_command (mozembed, "stop");
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_STOP,
+                               G_TYPE_INVALID);
 }
 
 void
 clutter_mozembed_refresh (ClutterMozEmbed *mozembed)
 {
-  send_command (mozembed, "refresh");
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_REFRESH,
+                               G_TYPE_INVALID);
 }
 
 void
 clutter_mozembed_reload (ClutterMozEmbed *mozembed)
 {
-  send_command (mozembed, "reload");
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_RELOAD,
+                               G_TYPE_INVALID);
 }
 
 gboolean
@@ -3136,26 +3099,24 @@ clutter_mozembed_set_scrollbars (ClutterMozEmbed *mozembed, gboolean show)
 
   if (priv->scrollbars != show)
     {
-      gchar *command;
-
       priv->scrollbars = show;
-      command = g_strdup_printf ("toggle-chrome %d",
-                                 MOZ_HEADLESS_FLAG_SCROLLBARSON);
-      send_command (mozembed, command);
-      g_free (command);
+      clutter_mozembed_comms_send (priv->output,
+                                   CME_COMMAND_TOGGLE_CHROME,
+                                   G_TYPE_INT, MOZ_HEADLESS_FLAG_SCROLLBARSON,
+                                   G_TYPE_INVALID);
     }
 }
 
 void
 clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy)
 {
-  gchar *command;
-
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
-  command = g_strdup_printf ("scroll %d %d", dx, dy);
-  send_command (mozembed, command);
-  g_free (command);
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_SCROLL,
+                               G_TYPE_INT, dx,
+                               G_TYPE_INT, dy,
+                               G_TYPE_INVALID);
 
   priv->offset_x -= dx;
   priv->offset_y -= dy;
@@ -3169,13 +3130,13 @@ clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy)
 void
 clutter_mozembed_scroll_to (ClutterMozEmbed *mozembed, gint x, gint y)
 {
-  gchar *command;
-
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
-  command = g_strdup_printf ("scroll-to %d %d", x, y);
-  send_command (mozembed, command);
-  g_free (command);
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_SCROLL_TO,
+                               G_TYPE_INT, x,
+                               G_TYPE_INT, y,
+                               G_TYPE_INVALID);
 
   /* TODO: Check that these two lines are correct */
   priv->offset_x -= x - (priv->scroll_x + priv->offset_y);

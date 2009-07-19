@@ -54,6 +54,9 @@ clutter-mozembed-marshal.c: Makefile clutter-mozembed-marshal.list
 	cp -f xgen-tmc clutter-mozembed-marshal.c && \
 	rm -f xgen-tmc
 
+clutter-mozheadless-comms.c: clutter-mozembed-comms.c
+	cp $^ $@
+
 source_h = \
 	clutter-mozembed.h \
 	clutter-mozembed-download.h
@@ -61,6 +64,8 @@ source_priv_h = \
 	clutter-mozembed-private.h
 source_c = \
 	clutter-mozembed.c \
+	clutter-mozembed-comms.c \
+	clutter-mozembed-comms.h \
 	clutter-mozembed-download.c
 
 bin_PROGRAMS = clutter-mozheadless
@@ -75,8 +80,10 @@ clutter_mozheadless_LDADD += @GTK_LIBS@
 endif
 
 clutter_mozheadless_SOURCES = \
+	clutter-mozembed-comms.h \
 	clutter-mozheadless.c \
 	clutter-mozheadless.h \
+	clutter-mozheadless-comms.c \
 	clutter-mozheadless-downloads.cc \
 	clutter-mozheadless-downloads.h \
 	clutter-mozheadless-history.cc \
@@ -113,7 +120,7 @@ library_include_HEADERS = $(source_h)
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = cluttermozembed.pc
 
-CLEANFILES = $(STAMP_FILES) $(BUILT_SOURCES)
+CLEANFILES = $(STAMP_FILES) $(BUILT_SOURCES) clutter-mozheadless-comms.c
 
 EXTRA_DIST = \
 	clutter-mozembed-marshal.list
