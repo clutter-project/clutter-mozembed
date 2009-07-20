@@ -1261,7 +1261,8 @@ HeadlessPrefBranch::RemoveObserver(const char *aDomain, nsIObserver *aObserver)
 
   for (i = 0; i < count; i++) {
     pCallback = (PrefCallbackData *)mObservers->ElementAt(i);
-    if (pCallback && (strcmp (pCallback->pDomain, aDomain) == 0)) {
+    if (pCallback && (strcmp (pCallback->pDomain, aDomain) == 0) &&
+        pCallback->pObserver == aObserver) {
       break;
     }
     pCallback = NULL;
