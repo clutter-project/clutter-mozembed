@@ -73,6 +73,7 @@ class HeadlessPrefBranch : public nsIPrefBranch2,
   HeadlessPrefBranch() { }
   const char *getPrefName(const char *aPrefName);
   void freeObserverList(void);
+  nsresult removeObserverInternal(PRInt32 observerNum);
 
  private:
   MhsPrefs            *mMhsPrefs;
@@ -1268,35 +1269,8 @@ HeadlessPrefBranch::RemoveObserver(const char *aDomain, nsIObserver *aObserver)
 
   guint ns_result = NS_OK;
 
-  if (pCallback) {
-    gboolean result;
-    GError *error = NULL;
-
-    // g_debug ("RemoveObserver(%d, %s)", mId, aDomain);
-    // This needs to be called first, as aDomain == pDomain, possibly
-    result = mhs_prefs_branch_remove_observer (mMhsPrefs,
-                                               mId,
-                                               (const gchar *)aDomain,
-                                               &error);
-
-    if (!result)
-      {
-        ns_result = mhs_error_to_nsresult (error);
-        g_warning ("Error removing observer: %s", error->message);
-        g_error_free (error);
-      }
-
-    mObservers->RemoveElementAt(i);
-    NS_Free (pCallback->pDomain);
-
-    if (pCallback->pWeakRef) {
-      NS_RELEASE(pCallback->pWeakRef);
-    } else {
-      NS_RELEASE(pCallback->pObserver);
-    }
-
-    nsMemory::Free(pCallback);
-  }
+  if (pCallback)
+    ns_result = removeObserverInternal(i);
 
   return (nsresult)ns_result;
 }
@@ -1335,24 +1309,73 @@ HeadlessPrefBranch::SignalChange(const char *aDomain)
     pCallback = (PrefCallbackData *)mObservers->ElementAt(i);
     if (pCallback &&
         g_str_has_prefix (aDomain, pCallback->pDomain)) {
-      pCallback->pObserver->Observe (static_cast<nsIPrefBranch *>(this),
-                                 NS_PREFBRANCH_PREFCHANGE_TOPIC_ID,
-                                 NS_ConvertUTF8toUTF16 (aDomain).get());
+      nsCOMPtr<nsIObserver> observer;
+      if (pCallback->pWeakRef) {
+        observer = do_QueryReferent(pCallback->pWeakRef);
+        if (!observer) {
+          // this weak referenced observer went away, remove them from
+          // the list
+          removeObserverInternal(i);
+          // decrement i so that we will continue from the same position
+          i--;
+          count--;
+          continue;
+        }
+      } else {
+        observer = pCallback->pObserver;
+      }
+      observer->Observe (static_cast<nsIPrefBranch *>(this),
+                         NS_PREFBRANCH_PREFCHANGE_TOPIC_ID,
+                         NS_ConvertUTF8toUTF16 (aDomain).get());
     }
   }
 }
 
-void HeadlessPrefBranch::freeObserverList(void)
+nsresult
+HeadlessPrefBranch::removeObserverInternal(PRInt32 observerNum)
 {
+  nsresult ns_result = NS_OK;
+  gboolean result;
+  GError *error = NULL;
   PrefCallbackData *pCallback;
 
+  pCallback = (PrefCallbackData *)mObservers->ElementAt(observerNum);
+
+  // g_debug ("RemoveObserver(%d, %s)", mId, aDomain);
+  // This needs to be called first, as aDomain == pDomain, possibly
+  result = mhs_prefs_branch_remove_observer (mMhsPrefs,
+                                             mId,
+                                             pCallback->pDomain,
+                                             &error);
+
+  if (!result)
+    {
+      ns_result = mhs_error_to_nsresult (error);
+      g_warning ("Error removing observer: %s", error->message);
+      g_error_free (error);
+    }
+
+  mObservers->RemoveElementAt(observerNum);
+  NS_Free (pCallback->pDomain);
+
+  if (pCallback->pWeakRef) {
+    NS_RELEASE(pCallback->pWeakRef);
+  } else {
+    NS_RELEASE(pCallback->pObserver);
+  }
+
+  nsMemory::Free(pCallback);
+
+  return ns_result;
+}
+
+void HeadlessPrefBranch::freeObserverList(void)
+{
   if (!mObservers)
     return;
 
-  while (mObservers->Count() > 0) {
-    pCallback = (PrefCallbackData *)mObservers->ElementAt(0);
-    RemoveObserver (pCallback->pDomain, pCallback->pObserver);
-  }
+  while (mObservers->Count() > 0)
+    removeObserverInternal (0);
 
   delete mObservers;
   mObservers = 0;
