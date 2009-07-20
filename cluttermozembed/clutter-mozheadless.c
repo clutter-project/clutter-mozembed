@@ -512,6 +512,24 @@ send_mack (ClutterMozHeadlessView *view)
   return FALSE;
 }
 
+static gboolean
+send_sack_cb (ClutterMozHeadlessView *view)
+{
+  view->sack_source = 0;
+  clutter_mozembed_comms_send (view->output,
+                               CME_FEEDBACK_SCROLL_ACK,
+                               G_TYPE_INVALID);
+  return FALSE;
+}
+
+static void
+send_sack (ClutterMozHeadlessView *view)
+{
+  if (!view->sack_source)
+    view->sack_source =
+      g_idle_add_full (G_PRIORITY_LOW, (GSourceFunc)send_sack_cb, view, NULL);
+}
+
 static void
 clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
 {
@@ -614,9 +632,13 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
            */
           if (!view->mack_source)
             view->mack_source =
-              g_idle_add_full (G_PRIORITY_LOW, (GSourceFunc)send_mack, view, NULL);
+              g_idle_add_full (G_PRIORITY_LOW,
+                               (GSourceFunc)send_mack,
+                               view,
+                               NULL);
           else
-            g_warning ("Received a motion event before sending acknowledgement");
+            g_warning ("Received a motion event before "
+                       "sending acknowledgement");
 
           break;
         }
@@ -694,6 +716,8 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
 
           moz_headless_scroll (headless, dx, dy);
 
+          send_sack (view);
+
           break;
         }
       case CME_COMMAND_SCROLL_TO :
@@ -706,6 +730,8 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
                                           G_TYPE_INVALID);
 
           moz_headless_set_scroll_pos (headless, x, y);
+
+          send_sack (view);
 
           break;
         }
@@ -884,6 +910,12 @@ disconnect_view (ClutterMozHeadlessView *view)
     {
       g_source_remove (view->mack_source);
       view->mack_source = 0;
+    }
+
+  if (view->sack_source)
+    {
+      g_source_remove (view->sack_source);
+      view->sack_source = 0;
     }
 
   if (view->input)

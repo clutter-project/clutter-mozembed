@@ -70,6 +70,7 @@ typedef struct
   GFileMonitor    *monitor;
   gboolean         waiting_for_ack;
   guint            mack_source;
+  guint            sack_source;
 } ClutterMozHeadlessView;
 
 typedef struct {

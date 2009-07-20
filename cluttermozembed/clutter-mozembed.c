@@ -117,11 +117,18 @@ struct _ClutterMozEmbedPrivate
 
   gboolean         read_only;
 
+  /* Variables for throttling motion events */
   gboolean            motion_ack;
   gboolean            pending_motion;
   gint                motion_x;
   gint                motion_y;
   ClutterModifierType motion_m;
+
+  /* Variables for throttling scroll requests */
+  gboolean            scroll_ack;
+  gboolean            pending_scroll;
+  gint                pending_scroll_x;
+  gint                pending_scroll_y;
 
   /* Variables for synchronous calls */
   ClutterMozEmbedFeedback sync_call;
@@ -312,6 +319,17 @@ send_motion_event (ClutterMozEmbed *self)
 }
 
 static void
+send_scroll_event (ClutterMozEmbed *self)
+{
+  ClutterMozEmbedPrivate *priv = self->priv;
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_SCROLL_TO,
+                               G_TYPE_INT, priv->pending_scroll_x,
+                               G_TYPE_INT, priv->pending_scroll_y,
+                               G_TYPE_INVALID);
+}
+
+static void
 _download_complete_cb (ClutterMozEmbedDownload *download,
                        ClutterMozEmbed         *self)
 {
@@ -412,6 +430,19 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
             priv->motion_ack = FALSE;
             priv->pending_motion = FALSE;
           }
+        break;
+      }
+    case CME_FEEDBACK_SCROLL_ACK :
+      {
+        priv->scroll_ack = TRUE;
+
+        if (priv->pending_scroll)
+          {
+            send_scroll_event (self);
+            priv->scroll_ack = FALSE;
+            priv->pending_scroll = FALSE;
+          }
+
         break;
       }
     case CME_FEEDBACK_PROGRESS :
@@ -2885,6 +2916,7 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   ClutterMozEmbedPrivate *priv = self->priv = MOZEMBED_PRIVATE (self);
 
   priv->motion_ack = TRUE;
+  priv->scroll_ack = TRUE;
   priv->spawn = TRUE;
   priv->poll_timeout = 1000;
   priv->connect_timeout = 10000;
@@ -3134,11 +3166,21 @@ clutter_mozembed_scroll_to (ClutterMozEmbed *mozembed, gint x, gint y)
 {
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
-  clutter_mozembed_comms_send (priv->output,
-                               CME_COMMAND_SCROLL_TO,
-                               G_TYPE_INT, x,
-                               G_TYPE_INT, y,
-                               G_TYPE_INVALID);
+  if (priv->scroll_ack)
+    {
+      clutter_mozembed_comms_send (priv->output,
+                                   CME_COMMAND_SCROLL_TO,
+                                   G_TYPE_INT, x,
+                                   G_TYPE_INT, y,
+                                   G_TYPE_INVALID);
+      priv->scroll_ack = FALSE;
+    }
+  else
+    {
+      priv->pending_scroll = TRUE;
+      priv->pending_scroll_x = x;
+      priv->pending_scroll_y = y;
+    }
 
   /* TODO: Check that these two lines are correct */
   priv->offset_x -= x - (priv->scroll_x + priv->offset_y);
