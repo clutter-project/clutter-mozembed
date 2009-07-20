@@ -850,12 +850,6 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
                                           viewport_window);
           break;
         }
-      case CME_COMMAND_MAP :
-        {
-          gboolean active = clutter_mozembed_comms_receive_boolean (view->input);
-          moz_headless_set_active (MOZ_HEADLESS (moz_headless), active);
-          break;
-        }
       default :
         g_warning ("Unknown command (%d)", command);
     }
