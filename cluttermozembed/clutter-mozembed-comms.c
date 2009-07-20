@@ -30,6 +30,12 @@ clutter_mozembed_comms_sendv (GIOChannel *channel, gint command_id, va_list args
   /* FIXME: Add error handling */
   /*g_debug ("Sending command: %d", command_id);*/
 
+  if (!channel)
+    {
+      g_warning ("Trying to send command %d with NULL channel", command_id);
+      return;
+    }
+
   g_io_channel_write_chars (channel,
                             (gchar *)(&command_id),
                             sizeof (command_id),
@@ -129,6 +135,12 @@ clutter_mozembed_comms_receive (GIOChannel *channel, ...)
   va_list args;
 
   gboolean success = TRUE;
+
+  if (!channel)
+    {
+      g_warning ("Trying to receive data with NULL channel");
+      return FALSE;
+    }
 
   va_start (args, channel);
 

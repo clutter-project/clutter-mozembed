@@ -1070,6 +1070,13 @@ clutter_mozembed_unmap (ClutterActor *actor)
       PluginWindow *window = p->data;
       clutter_actor_map (window->plugin_tfp);
     }
+
+  /* Send MAP command to headless */
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_MAP,
+                               G_TYPE_BOOLEAN, FALSE,
+                               G_TYPE_INVALID);
+
 }
 
 static void
@@ -1089,6 +1096,12 @@ clutter_mozembed_map (ClutterActor *actor)
       PluginWindow *window = p->data;
       clutter_actor_map (window->plugin_tfp);
     }
+
+  /* Send MAP command to headless */
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_MAP,
+                               G_TYPE_BOOLEAN, TRUE,
+                               G_TYPE_INVALID);
 }
 #endif
 
