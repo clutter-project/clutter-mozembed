@@ -118,6 +118,7 @@ void clutter_mozembed_refresh (ClutterMozEmbed *mozembed);
 void clutter_mozembed_reload (ClutterMozEmbed *mozembed);
 GList *clutter_mozembed_get_downloads (ClutterMozEmbed *mozembed);
 gboolean clutter_mozembed_get_private (ClutterMozEmbed *mozembed);
+void clutter_mozembed_purge_session_history (ClutterMozEmbed *mozembed);
 
 gboolean clutter_mozembed_get_scrollbars (ClutterMozEmbed *mozembed);
 gboolean clutter_mozembed_get_async_scroll (ClutterMozEmbed *mozembed);

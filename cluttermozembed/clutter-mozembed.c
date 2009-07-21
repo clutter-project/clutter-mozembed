@@ -3113,6 +3113,14 @@ clutter_mozembed_reload (ClutterMozEmbed *mozembed)
                                G_TYPE_INVALID);
 }
 
+void
+clutter_mozembed_purge_session_history (ClutterMozEmbed *mozembed)
+{
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_PURGE_SESSION_HISTORY,
+                               G_TYPE_INVALID);
+}
+
 gboolean
 clutter_mozembed_get_async_scroll (ClutterMozEmbed *mozembed)
 {

@@ -80,7 +80,8 @@ typedef enum
   CME_COMMAND_NEW_WINDOW_CANCEL,
   CME_COMMAND_FOCUS,
   CME_COMMAND_PLUGIN_WINDOW,
-  CME_COMMAND_MAP
+  CME_COMMAND_MAP,
+  CME_COMMAND_PURGE_SESSION_HISTORY
 } ClutterMozEmbedCommand;
 
 void clutter_mozembed_comms_sendv (GIOChannel *channel, gint command_id, va_list args);

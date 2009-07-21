@@ -876,6 +876,11 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
                                           viewport_window);
           break;
         }
+    case CME_COMMAND_PURGE_SESSION_HISTORY :
+        {
+          moz_headless_purge_session_history (MOZ_HEADLESS (moz_headless));
+          break;
+        }
       default :
         g_warning ("Unknown command (%d)", command);
     }
