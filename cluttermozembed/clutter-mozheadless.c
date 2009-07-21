@@ -870,10 +870,12 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
         }
       case CME_COMMAND_PLUGIN_WINDOW :
         {
+#ifdef SUPPORT_PLUGINS
           Window viewport_window = (Window)
             clutter_mozembed_comms_receive_ulong (view->input);
           moz_headless_set_plugin_window (MOZ_HEADLESS (moz_headless),
                                           viewport_window);
+#endif
           break;
         }
     case CME_COMMAND_PURGE_SESSION_HISTORY :
