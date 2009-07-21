@@ -335,8 +335,12 @@ _download_complete_cb (ClutterMozEmbedDownload *download,
 {
   gint id;
   ClutterMozEmbedPrivate *priv = self->priv;
-  g_object_get (G_OBJECT (download), "id", &id, NULL);
-  g_hash_table_remove (priv->downloads, GINT_TO_POINTER (id));
+
+  if (clutter_mozembed_download_get_complete (download))
+    {
+      g_object_get (G_OBJECT (download), "id", &id, NULL);
+      g_hash_table_remove (priv->downloads, GINT_TO_POINTER (id));
+    }
 }
 
 static gboolean
@@ -607,7 +611,7 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
 
         download = clutter_mozembed_download_new (id, source, dest);
         g_hash_table_insert (priv->downloads, GINT_TO_POINTER (id), download);
-        g_signal_connect (download, "complete",
+        g_signal_connect (download, "notify::complete",
                           G_CALLBACK (_download_complete_cb), self);
         g_signal_emit (self, signals[DOWNLOAD], 0, download);
 
