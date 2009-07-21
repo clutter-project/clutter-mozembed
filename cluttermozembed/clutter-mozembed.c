@@ -331,6 +331,7 @@ send_scroll_event (ClutterMozEmbed *self)
 
 static void
 _download_complete_cb (ClutterMozEmbedDownload *download,
+                       GParamSpec              *pspec,
                        ClutterMozEmbed         *self)
 {
   gint id;
