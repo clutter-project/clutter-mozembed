@@ -4,6 +4,7 @@
 /autom4te.cache
 /cluttermozembed/Makefile
 /cluttermozembed/Makefile.in
+/cluttermozembed/clutter-mozheadless-comms.c
 /cluttermozembed/clutter-mozembed-marshal.c
 /cluttermozembed/clutter-mozembed-marshal.h
 /cluttermozembed/clutter-mozheadless
