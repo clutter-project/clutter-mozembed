@@ -641,7 +641,7 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
 
         download = g_hash_table_lookup (priv->downloads, GINT_TO_POINTER (id));
         if (download)
-          g_signal_emit_by_name (download, "complete");
+          clutter_mozembed_download_set_complete (download, TRUE);
 
         break;
       }

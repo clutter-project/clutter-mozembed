@@ -36,16 +36,8 @@ enum
   PROP_DESTINATION,
   PROP_PROGRESS,
   PROP_MAX_PROGRESS,
+  PROP_COMPLETE
 };
-
-enum
-{
-  COMPLETE,
-
-  LAST_SIGNAL
-};
-
-static guint signals[LAST_SIGNAL] = { 0, };
 
 struct _ClutterMozEmbedDownloadPrivate
 {
@@ -54,6 +46,7 @@ struct _ClutterMozEmbedDownloadPrivate
   gchar   *dest_uri;
   gint64   progress;
   gint64   max_progress;
+  gboolean complete;
 };
 
 static void
@@ -82,6 +75,10 @@ clutter_mozembed_download_get_property (GObject *object, guint property_id,
 
   case PROP_MAX_PROGRESS :
     g_value_set_int64 (value, clutter_mozembed_download_get_max_progress (self));
+    break;
+
+  case PROP_COMPLETE :
+    g_value_set_boolean (value, clutter_mozembed_download_get_complete (self));
     break;
 
   default:
@@ -205,14 +202,16 @@ clutter_mozembed_download_class_init (ClutterMozEmbedDownloadClass *klass)
                                                        G_PARAM_STATIC_NICK |
                                                        G_PARAM_STATIC_BLURB));
 
-  signals[COMPLETE] =
-    g_signal_new ("complete",
-                  G_TYPE_FROM_CLASS (klass),
-                  G_SIGNAL_RUN_LAST,
-                  G_STRUCT_OFFSET (ClutterMozEmbedDownloadClass, complete),
-                  NULL, NULL,
-                  g_cclosure_marshal_VOID__VOID,
-                  G_TYPE_NONE, 0);
+  g_object_class_install_property (object_class,
+                                   PROP_COMPLETE,
+                                   g_param_spec_boolean ("complete",
+                                                         "Complete",
+                                                         "Download complete.",
+                                                         FALSE,
+                                                         G_PARAM_READABLE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB));
 }
 
 static void
@@ -276,5 +275,24 @@ clutter_mozembed_download_set_progress (ClutterMozEmbedDownload *self,
       priv->max_progress = max_progress;
       g_object_notify (G_OBJECT (self), "max-progress");
     }
+}
+
+void
+clutter_mozembed_download_set_complete (ClutterMozEmbedDownload *self,
+                                        gboolean                 complete)
+{
+  ClutterMozEmbedDownloadPrivate *priv = self->priv;
+
+  if (priv->complete != complete)
+    {
+      priv->complete = complete;
+      g_object_notify (G_OBJECT (self), "complete");
+    }
+}
+
+gboolean
+clutter_mozembed_download_get_complete (ClutterMozEmbedDownload *self)
+{
+  return self->priv->complete;
 }
 

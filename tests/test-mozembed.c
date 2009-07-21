@@ -13,9 +13,10 @@ progress_cb (ClutterMozEmbedDownload *download,
              GParamSpec              *pspec,
              ClutterActor            *rect)
 {
-  clutter_actor_set_width (rect,
-                           280 *
-                           clutter_mozembed_download_get_progress (download));
+  gdouble progress =
+    clutter_mozembed_download_get_progress (download) /
+      (gdouble)clutter_mozembed_download_get_max_progress (download);
+  clutter_actor_set_width (rect, 280 * progress);
 }
 
 static void

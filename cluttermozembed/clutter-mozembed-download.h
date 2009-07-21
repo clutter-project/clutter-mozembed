@@ -57,9 +57,6 @@ typedef struct {
 
 typedef struct {
   GObjectClass parent_class;
-
-  /* Signals */
-  void (* complete)     (ClutterMozEmbedDownload *download);
 } ClutterMozEmbedDownloadClass;
 
 GType clutter_mozembed_download_get_type (void);
@@ -75,6 +72,9 @@ clutter_mozembed_download_get_progress (ClutterMozEmbedDownload *self);
 
 gint64
 clutter_mozembed_download_get_max_progress (ClutterMozEmbedDownload *self);
+
+gboolean
+clutter_mozembed_download_get_complete (ClutterMozEmbedDownload *self);
 
 G_END_DECLS
 
