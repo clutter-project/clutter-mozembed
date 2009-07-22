@@ -32,7 +32,11 @@
 #include <nsIWebProgress.h>
 #include <nsIWebProgressListener.h>
 #include <nsIWebProgressListener2.h>
+#include <nsIPrefService.h>
 #include <nsStringGlue.h>
+#include <nsNetUtil.h>
+#include <nsDirectoryServiceDefs.h>
+#include <nsDirectoryServiceUtils.h>
 
 #include "clutter-mozheadless-downloads.h"
 #include <moz-headless.h>
@@ -53,6 +57,16 @@ private:
   gint         mDownloadId;
 
   static gint sDownloadId;
+
+  nsresult PromptWithFilePicker(nsIDOMWindow      *window,
+                                const PRUnichar   *aDefaultFile,
+                                const PRUnichar   *aSuggestedFileExtension,
+                                nsILocalFile     **aFile);
+  nsresult CalculateFilename(nsIFile           *download_dir,
+                             const PRUnichar   *aDefaultFile,
+                             nsILocalFile     **aFile);
+  nsresult GetDownloadDir(nsIPrefBranch  *root_branch,
+                          nsIFile       **download_dir);
 };
 
 gint HeadlessDownloads::sDownloadId = 0;
@@ -91,22 +105,13 @@ HeadlessDownloads::Show(nsIHelperAppLauncher *aLauncher,
   return aLauncher->SaveToDisk(nsnull, PR_FALSE);
 }
 
-NS_IMETHODIMP
-HeadlessDownloads::PromptForSaveToFile(nsIHelperAppLauncher  *aLauncher,
-                                       nsISupports           *aWindowContext,
-                                       const PRUnichar       *aDefaultFile,
-                                       const PRUnichar       *aSuggestedFileExtension,
-                                       PRBool                 aForcePrompt,
-                                       nsILocalFile         **_retval)
+nsresult
+HeadlessDownloads::PromptWithFilePicker(nsIDOMWindow      *window,
+                                        const PRUnichar   *aDefaultFile,
+                                        const PRUnichar   *aSuggestedFileExtension,
+                                        nsILocalFile     **aFile)
 {
-  NS_ENSURE_ARG_POINTER(_retval);
-  *_retval = nsnull;
-
   nsresult rv;
-
-  /* Get window */
-  nsCOMPtr<nsIDOMWindow> window(do_GetInterface(aWindowContext));
-  NS_ENSURE_TRUE(window, NS_ERROR_FAILURE);
 
   /* Create a file dialog */
   nsCOMPtr<nsIFilePicker> filePicker(do_CreateInstance("@mozilla.org/filepicker;1", &rv));
@@ -129,45 +134,191 @@ HeadlessDownloads::PromptForSaveToFile(nsIHelperAppLauncher  *aLauncher,
   /* Get the file */
   PRInt16 result;
   rv = filePicker->Show(&result);
-  if (NS_FAILED (rv) || (result == nsIFilePicker::returnCancel)) {
+  if (NS_FAILED (rv))
+    return rv;
+  if (result == nsIFilePicker::returnCancel)
     return NS_ERROR_FAILURE;
-  } else {
-    // Add ourselves as the listener for the download. Note that this will
-    // add a reference, which will be released when the download is finished
-    aLauncher->SetWebProgressListener (this);
+  return filePicker->GetFile(aFile);
+}
 
-    // Add a reference on the window that started this download, so it doesn't
-    // get destroyed until the download finishes
-    mMozHeadless = moz_headless_get_from_dom_window ((gpointer)window);
-    if (mMozHeadless)
-      {
-        g_object_ref (mMozHeadless);
+nsresult
+HeadlessDownloads::CalculateFilename(nsIFile           *download_dir,
+                                     const PRUnichar   *aDefaultFile,
+                                     nsILocalFile     **aFile)
+{
+  nsresult rv;
+  nsCOMPtr<nsIFile> fileCopy;
+  nsCOMPtr<nsILocalFile> localFileCopy;
+  PRBool file_exists;
 
-        // Inform ClutterMozEmbed of this new download
-        nsIURI *uri, *file_uri;
-        if (NS_SUCCEEDED (aLauncher->GetSource(&uri)) &&
-            NS_SUCCEEDED (filePicker->GetFileURL(&file_uri)))
-          {
-            nsCAutoString ns_uri_string, ns_file_uri_string;
-            if (NS_SUCCEEDED (uri->GetSpec(ns_uri_string)) &&
-                NS_SUCCEEDED (file_uri->GetSpec(ns_file_uri_string)))
-              {
-                const char *uri_string = ns_uri_string.get();
-                const char *file_uri_string = ns_file_uri_string.get();
-                send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
-                                   CME_FEEDBACK_DL_START,
-                                   G_TYPE_INT, mDownloadId,
-                                   G_TYPE_STRING, uri_string,
-                                   G_TYPE_STRING, file_uri_string,
-                                   G_TYPE_INVALID);
-              }
-          }
-      }
-    else
-      g_warning ("Couldn't find window for download");
-  }
+  rv = download_dir->Clone (getter_AddRefs (fileCopy));
+  NS_ENSURE_SUCCESS (rv, rv);
+  localFileCopy = do_QueryInterface (fileCopy, &rv);
+  NS_ENSURE_SUCCESS (rv, rv);
+  rv = localFileCopy->AppendRelativePath (nsDependentString (aDefaultFile));
+  NS_ENSURE_SUCCESS (rv, rv);
 
-  return filePicker->GetFile(_retval);
+  rv = localFileCopy->Exists (&file_exists);
+  NS_ENSURE_SUCCESS (rv, rv);
+  if (!file_exists)
+    localFileCopy.forget (aFile);
+  else
+    {
+      nsDependentString full_filename (aDefaultFile);
+      PRInt32 dot_pos;
+      int i = 2;
+      nsAutoString filename;
+
+      dot_pos = full_filename.RFindChar ('.');
+
+      while (true)
+        {
+          filename.Truncate ();
+
+          if (dot_pos == -1)
+            filename.Append (full_filename);
+          else
+            filename.Append (Substring (full_filename, 0, dot_pos));
+
+          filename.Append ('-');
+          filename.AppendInt (i);
+
+          if (dot_pos != -1)
+            filename.Append (Substring (full_filename, dot_pos));
+
+          rv = download_dir->Clone (getter_AddRefs (fileCopy));
+          NS_ENSURE_SUCCESS (rv, rv);
+          localFileCopy = do_QueryInterface (fileCopy, &rv);
+          NS_ENSURE_SUCCESS (rv, rv);
+          rv = localFileCopy->AppendRelativePath (filename);
+          NS_ENSURE_SUCCESS (rv, rv);
+
+          rv = localFileCopy->Exists (&file_exists);
+          NS_ENSURE_SUCCESS (rv, rv);
+          if (!file_exists)
+            {
+              localFileCopy.forget (aFile);
+              break;
+            }
+
+          i++;
+        }
+    }
+
+  return NS_OK;
+}
+
+nsresult
+HeadlessDownloads::GetDownloadDir(nsIPrefBranch  *root_branch,
+                                  nsIFile       **download_dir)
+{
+  nsresult rv;
+  nsCAutoString download_dir_str;
+
+  rv = root_branch->GetCharPref ("clutter_mozembed."
+                                 "download_directory",
+                                 getter_Copies (download_dir_str));
+  if (NS_SUCCEEDED (rv) && !download_dir_str.IsEmpty ())
+    {
+      nsCOMPtr<nsILocalFile> local_file;
+      rv = NS_NewNativeLocalFile (download_dir_str, PR_FALSE,
+                                  getter_AddRefs (local_file));
+      NS_ENSURE_SUCCESS (rv, rv);
+      return local_file->QueryInterface (NS_GET_IID (nsILocalFile),
+                                         (void **) download_dir);
+    }
+
+  /* Try to get the XDG download dir */
+  return NS_GetSpecialDirectory (NS_UNIX_XDG_DOWNLOAD_DIR, download_dir);
+}
+
+NS_IMETHODIMP
+HeadlessDownloads::PromptForSaveToFile(nsIHelperAppLauncher  *aLauncher,
+                                       nsISupports           *aWindowContext,
+                                       const PRUnichar       *aDefaultFile,
+                                       const PRUnichar       *aSuggestedFileExtension,
+                                       PRBool                 aForcePrompt,
+                                       nsILocalFile         **_retval)
+{
+  nsresult rv;
+
+  NS_ENSURE_ARG_POINTER(_retval);
+  *_retval = nsnull;
+  nsCOMPtr<nsILocalFile> file;
+  nsCOMPtr<nsIURI> uri, file_uri;
+
+  /* Get window */
+  nsCOMPtr<nsIDOMWindow> window(do_GetInterface(aWindowContext));
+  NS_ENSURE_TRUE(window, NS_ERROR_FAILURE);
+
+  /* Check if there is a preference to disable the file picker */
+  nsCOMPtr<nsIPrefService> pref_service =
+    do_GetService (NS_PREFSERVICE_CONTRACTID, &rv);
+  NS_ENSURE_SUCCESS (rv, rv);
+
+  PRBool disable_file_picker = FALSE;
+
+  nsCOMPtr<nsIPrefBranch> root_branch;
+  nsCOMPtr<nsIFile> download_dir;
+  rv = pref_service->GetBranch("", getter_AddRefs (root_branch));
+  if (NS_SUCCEEDED (rv))
+    {
+      rv = root_branch->GetBoolPref ("clutter_mozembed."
+                                     "disable_download_file_picker",
+                                     &disable_file_picker);
+      if (NS_FAILED (rv) ||
+          (disable_file_picker &&
+           NS_FAILED (GetDownloadDir (root_branch,
+                                      getter_AddRefs (download_dir)))))
+        disable_file_picker = FALSE;
+    }
+
+  if (disable_file_picker)
+    rv = CalculateFilename (download_dir,
+                            aDefaultFile,
+                            getter_AddRefs (file));
+  else
+    rv = PromptWithFilePicker (window,
+                               aDefaultFile,
+                               aSuggestedFileExtension,
+                               getter_AddRefs (file));
+  NS_ENSURE_SUCCESS (rv, rv);
+
+  // Add ourselves as the listener for the download. Note that this will
+  // add a reference, which will be released when the download is finished
+  aLauncher->SetWebProgressListener (this);
+
+  // Add a reference on the window that started this download, so it doesn't
+  // get destroyed until the download finishes
+  mMozHeadless = moz_headless_get_from_dom_window ((gpointer)window);
+  if (mMozHeadless)
+    {
+      g_object_ref (mMozHeadless);
+
+      // Inform ClutterMozEmbed of this new download
+      if (NS_SUCCEEDED (aLauncher->GetSource(getter_AddRefs (uri))) &&
+          NS_SUCCEEDED (NS_NewFileURI (getter_AddRefs (file_uri), file)))
+        {
+          nsCAutoString ns_uri_string, ns_file_uri_string;
+          if (NS_SUCCEEDED (uri->GetSpec(ns_uri_string)) &&
+              NS_SUCCEEDED (file_uri->GetSpec(ns_file_uri_string)))
+            {
+              const char *uri_string = ns_uri_string.get();
+              const char *file_uri_string = ns_file_uri_string.get();
+              send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
+                                 CME_FEEDBACK_DL_START,
+                                 G_TYPE_INT, mDownloadId,
+                                 G_TYPE_STRING, uri_string,
+                                 G_TYPE_STRING, file_uri_string,
+                                 G_TYPE_INVALID);
+            }
+        }
+    }
+  else
+    g_warning ("Couldn't find window for download");
+
+  file.forget(_retval);
+  return NS_OK;
 }
 
 // nsIWebProgressListener
