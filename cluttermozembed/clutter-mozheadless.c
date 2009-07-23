@@ -481,6 +481,7 @@ clutter_mozheadless_create_view (ClutterMozHeadless *self,
   priv->views = g_list_append (priv->views, view);
 
   view->parent = self;
+  /* This takes ownership of the input_file and output_file strings */
   view->input_file = input_file;
   view->output_file = output_file;
 
@@ -815,10 +816,8 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
                                           G_TYPE_STRING, &output,
                                           G_TYPE_INVALID);
 
+          /* create_view takes ownership of the input and output strings */
           clutter_mozheadless_create_view (moz_headless, input, output);
-
-          g_free (input);
-          g_free (output);
 
           break;
         }
@@ -1184,6 +1183,8 @@ clutter_mozheadless_constructed (GObject *object)
   if (G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed)
     G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed (object);
 
+  /* create_view takes ownership of the priv->input_file and
+     priv->output_file strings */
   clutter_mozheadless_create_view (self, priv->input_file, priv->output_file);
 
   if (!priv->shm_name)
