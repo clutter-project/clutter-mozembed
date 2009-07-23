@@ -828,18 +828,18 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
   Display                *xdpy = clutter_x11_get_default_display ();
   ClutterGeometry         geom;
   float                   abs_x, abs_y;
-  gboolean                visible;
+  gboolean                mapped;
   gboolean                reactive;
 
   if (!priv->plugin_viewport)
     return;
 
-  visible = CLUTTER_ACTOR_IS_VISIBLE (mozembed);
+  mapped = CLUTTER_ACTOR_IS_MAPPED (mozembed);
   reactive = CLUTTER_ACTOR_IS_REACTIVE (mozembed);
 
   clutter_actor_get_allocation_geometry (CLUTTER_ACTOR (mozembed), &geom);
 
-  if (visible && reactive)
+  if (mapped && reactive)
     {
       clutter_actor_get_transformed_position (CLUTTER_ACTOR (mozembed),
                                               &abs_x, &abs_y);
