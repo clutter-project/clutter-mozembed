@@ -1146,15 +1146,18 @@ static void
 clutter_mozheadless_finalize (GObject *object)
 {
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (object)->priv;
-  
+
   shm_unlink (priv->shm_name);
 
   g_free (priv->shm_name);
-  
+
+  g_free (priv->input_file);
+  g_free (priv->output_file);
+
   spawned_heads --;
   if (spawned_heads <= 0)
     g_main_loop_quit (mainloop);
-  
+
   G_OBJECT_CLASS (clutter_mozheadless_parent_class)->finalize (object);
 }
 
@@ -1175,9 +1178,9 @@ clutter_mozheadless_constructed (GObject *object)
   if (G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed)
     G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed (object);
 
-  /* create_view takes ownership of the priv->input_file and
-     priv->output_file strings */
-  clutter_mozheadless_create_view (self, priv->input_file, priv->output_file);
+  clutter_mozheadless_create_view (self,
+                                   g_strdup (priv->input_file),
+                                   g_strdup (priv->output_file));
 
   if (!priv->shm_name)
     {
