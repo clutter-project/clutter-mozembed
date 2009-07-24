@@ -76,6 +76,12 @@ clutter_mozembed_download_get_max_progress (ClutterMozEmbedDownload *self);
 gboolean
 clutter_mozembed_download_get_complete (ClutterMozEmbedDownload *self);
 
+gboolean
+clutter_mozembed_download_get_cancelled (ClutterMozEmbedDownload *self);
+
+void
+clutter_mozembed_download_cancel (ClutterMozEmbedDownload *self);
+
 G_END_DECLS
 
 #endif /* _CLUTTER_MOZEMBED_DOWNLOAD */

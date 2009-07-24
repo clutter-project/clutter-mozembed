@@ -19,6 +19,9 @@
  */
 
 #include "clutter-mozembed-download.h"
+
+#include "clutter-mozembed.h"
+#include "clutter-mozembed-comms.h"
 #include "clutter-mozembed-private.h"
 
 G_DEFINE_TYPE (ClutterMozEmbedDownload, clutter_mozembed_download, G_TYPE_OBJECT)
@@ -31,22 +34,26 @@ enum
 {
   PROP_0,
 
+  PROP_PARENT,
   PROP_ID,
   PROP_SOURCE,
   PROP_DESTINATION,
   PROP_PROGRESS,
   PROP_MAX_PROGRESS,
-  PROP_COMPLETE
+  PROP_COMPLETE,
+  PROP_CANCELLED
 };
 
 struct _ClutterMozEmbedDownloadPrivate
 {
-  gint     id;
-  gchar   *source_uri;
-  gchar   *dest_uri;
-  gint64   progress;
-  gint64   max_progress;
-  gboolean complete;
+  ClutterMozEmbed *parent;
+  gint             id;
+  gchar           *source_uri;
+  gchar           *dest_uri;
+  gint64           progress;
+  gint64           max_progress;
+  gboolean         complete;
+  gboolean         cancelled;
 };
 
 static void
@@ -56,6 +63,10 @@ clutter_mozembed_download_get_property (GObject *object, guint property_id,
   ClutterMozEmbedDownload *self = CLUTTER_MOZEMBED_DOWNLOAD (object);
 
   switch (property_id) {
+  case PROP_PARENT :
+    g_value_set_object (value, self->priv->parent);
+    break;
+
   case PROP_ID :
     g_value_set_int (value, self->priv->id);
     break;
@@ -81,6 +92,10 @@ clutter_mozembed_download_get_property (GObject *object, guint property_id,
     g_value_set_boolean (value, clutter_mozembed_download_get_complete (self));
     break;
 
+  case PROP_CANCELLED :
+    g_value_set_boolean (value, clutter_mozembed_download_get_cancelled (self));
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -94,6 +109,10 @@ clutter_mozembed_download_set_property (GObject *object, guint property_id,
   ClutterMozEmbedDownloadPrivate *priv = self->priv;
 
   switch (property_id) {
+  case PROP_PARENT :
+    priv->parent = g_value_get_object (value);
+    break;
+
   case PROP_ID :
     priv->id = g_value_get_int (value);
     break;
@@ -141,6 +160,18 @@ clutter_mozembed_download_class_init (ClutterMozEmbedDownloadClass *klass)
   object_class->set_property = clutter_mozembed_download_set_property;
   object_class->dispose = clutter_mozembed_download_dispose;
   object_class->finalize = clutter_mozembed_download_finalize;
+
+  g_object_class_install_property (object_class,
+                                   PROP_PARENT,
+                                   g_param_spec_object ("parent",
+                                                        "Parent",
+                                                        "Parent ClutterMozEmbed.",
+                                                        CLUTTER_TYPE_MOZEMBED,
+                                                        G_PARAM_READWRITE |
+                                                        G_PARAM_CONSTRUCT_ONLY |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_NICK |
+                                                        G_PARAM_STATIC_BLURB));
 
   g_object_class_install_property (object_class,
                                    PROP_ID,
@@ -212,6 +243,17 @@ clutter_mozembed_download_class_init (ClutterMozEmbedDownloadClass *klass)
                                                          G_PARAM_STATIC_NAME |
                                                          G_PARAM_STATIC_NICK |
                                                          G_PARAM_STATIC_BLURB));
+
+  g_object_class_install_property (object_class,
+                                   PROP_CANCELLED,
+                                   g_param_spec_boolean ("cancelled",
+                                                         "Cancelled",
+                                                         "Download cancelled.",
+                                                         FALSE,
+                                                         G_PARAM_READABLE |
+                                                         G_PARAM_STATIC_NAME |
+                                                         G_PARAM_STATIC_NICK |
+                                                         G_PARAM_STATIC_BLURB));
 }
 
 static void
@@ -222,11 +264,13 @@ clutter_mozembed_download_init (ClutterMozEmbedDownload *self)
 }
 
 ClutterMozEmbedDownload *
-clutter_mozembed_download_new (gint         id,
-                               const gchar *source,
-                               const gchar *destination)
+clutter_mozembed_download_new (ClutterMozEmbed *parent,
+                               gint             id,
+                               const gchar     *source,
+                               const gchar     *destination)
 {
   return g_object_new (CLUTTER_TYPE_MOZEMBED_DOWNLOAD,
+                       "parent", parent,
                        "id", id,
                        "source", source,
                        "destination", destination,
@@ -294,5 +338,34 @@ gboolean
 clutter_mozembed_download_get_complete (ClutterMozEmbedDownload *self)
 {
   return self->priv->complete;
+}
+
+void
+clutter_mozembed_download_set_cancelled (ClutterMozEmbedDownload *self)
+{
+  ClutterMozEmbedDownloadPrivate *priv = self->priv;
+
+  if (!priv->cancelled)
+    {
+      priv->cancelled = TRUE;
+      g_object_notify (G_OBJECT (self), "cancelled");
+    }
+}
+
+gboolean
+clutter_mozembed_download_get_cancelled (ClutterMozEmbedDownload *self)
+{
+  return self->priv->cancelled;
+}
+
+void
+clutter_mozembed_download_cancel (ClutterMozEmbedDownload *self)
+{
+  ClutterMozEmbedPrivate *priv = self->priv->parent->priv;
+
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_DL_CANCEL,
+                               G_TYPE_INT, self->priv->id,
+                               G_TYPE_INVALID);
 }
 

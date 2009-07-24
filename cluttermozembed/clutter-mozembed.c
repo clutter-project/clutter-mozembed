@@ -23,8 +23,6 @@
 #include "clutter-mozembed-comms.h"
 #include "clutter-mozembed-private.h"
 #include "clutter-mozembed-marshal.h"
-#include <glib/gstdio.h>
-#include <gio/gio.h>
 #include <moz-headless.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -33,13 +31,6 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
-
-#ifdef SUPPORT_PLUGINS
-#include <X11/extensions/Xcomposite.h>
-#include <clutter/x11/clutter-x11.h>
-#include <clutter/glx/clutter-glx.h>
-#include <gdk/gdkx.h>
-#endif
 
 G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_TYPE_TEXTURE)
 
@@ -95,92 +86,6 @@ enum
 };
 
 static guint signals[LAST_SIGNAL] = { 0, };
-
-struct _ClutterMozEmbedPrivate
-{
-  GFileMonitor    *monitor;
-  GIOChannel      *input;
-  GIOChannel      *output;
-  guint            watch_id;
-  GPid             child_pid;
-
-  gchar           *input_file;
-  gchar           *output_file;
-  gchar           *shm_name;
-  gboolean         opened_shm;
-  int              shm_fd;
-  gboolean         spawn;
-
-  void            *image_data;
-  int              image_size;
-  guint            repaint_id;
-
-  gboolean         read_only;
-
-  /* Variables for throttling motion events */
-  gboolean            motion_ack;
-  gboolean            pending_motion;
-  gint                motion_x;
-  gint                motion_y;
-  ClutterModifierType motion_m;
-
-  /* Variables for throttling scroll requests */
-  gboolean            scroll_ack;
-  gboolean            pending_scroll;
-  gint                pending_scroll_x;
-  gint                pending_scroll_y;
-
-  /* Variables for synchronous calls */
-  ClutterMozEmbedFeedback sync_call;
-
-  /* Locally cached properties */
-  gchar           *location;
-  gchar           *title;
-  gchar           *icon;
-  gint             doc_width;
-  gint             doc_height;
-  gint             scroll_x;
-  gint             scroll_y;
-  guint            security;
-  gboolean         is_loading;
-  gdouble          progress;
-  gboolean         can_go_back;
-  gboolean         can_go_forward;
-  GHashTable      *downloads;
-  gboolean         scrollbars;
-  gboolean         private;
-
-  /* Offsets for async scrolling mode */
-  gint             offset_x;
-  gint             offset_y;
-  gboolean         async_scroll;
-
-  /* Connection timeout variables */
-  guint            poll_source;
-  guint            poll_timeout;
-  guint            poll_timeout_source;
-  guint            connect_timeout;
-  guint            connect_timeout_source;
-
-  /* List of extra paths to search for components */
-  gchar          **comp_paths;
-  /* and for chrome manifest files */
-  gchar          **chrome_paths;
-
-#ifdef SUPPORT_PLUGINS
-  Window           stage_xwin;
-  GdkWindow       *stage_gdk_window;
-
-  /* The toplevel window owned by the moz-headless process that
-   * parents all the plugin windows. */
-  Window           plugin_viewport;
-  gboolean         plugin_viewport_initialized;
-
-  GList           *plugin_windows;
-#endif
-
-  MozHeadlessCursorType cursor;
-};
 
 static void clutter_mozembed_open_pipes (ClutterMozEmbed *self);
 static MozHeadlessModifier
@@ -326,14 +231,15 @@ send_scroll_event (ClutterMozEmbed *self)
 }
 
 static void
-_download_complete_cb (ClutterMozEmbedDownload *download,
+_download_finished_cb (ClutterMozEmbedDownload *download,
                        GParamSpec              *pspec,
                        ClutterMozEmbed         *self)
 {
   gint id;
   ClutterMozEmbedPrivate *priv = self->priv;
 
-  if (clutter_mozembed_download_get_complete (download))
+  if (clutter_mozembed_download_get_complete (download) ||
+      clutter_mozembed_download_get_cancelled (download))
     {
       g_object_get (G_OBJECT (download), "id", &id, NULL);
       g_hash_table_remove (priv->downloads, GINT_TO_POINTER (id));
@@ -602,10 +508,12 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
                                         G_TYPE_STRING, &dest,
                                         G_TYPE_INVALID);
 
-        download = clutter_mozembed_download_new (id, source, dest);
+        download = clutter_mozembed_download_new (self, id, source, dest);
         g_hash_table_insert (priv->downloads, GINT_TO_POINTER (id), download);
-        g_signal_connect (download, "notify::complete",
-                          G_CALLBACK (_download_complete_cb), self);
+        g_signal_connect_after (download, "notify::complete",
+                                G_CALLBACK (_download_finished_cb), self);
+        g_signal_connect_after (download, "notify::cancelled",
+                                G_CALLBACK (_download_finished_cb), self);
         g_signal_emit (self, signals[DOWNLOAD], 0, download);
 
         break;
@@ -639,6 +547,18 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
         download = g_hash_table_lookup (priv->downloads, GINT_TO_POINTER (id));
         if (download)
           clutter_mozembed_download_set_complete (download, TRUE);
+
+        break;
+      }
+    case CME_FEEDBACK_DL_CANCELLED :
+      {
+        ClutterMozEmbedDownload *download;
+
+        gint id = clutter_mozembed_comms_receive_int (priv->input);
+
+        download = g_hash_table_lookup (priv->downloads, GINT_TO_POINTER (id));
+        if (download)
+          clutter_mozembed_download_set_cancelled (download);
 
         break;
       }
@@ -2850,7 +2770,7 @@ _destroy_download_cb (gpointer data)
                                         0,
                                         0,
                                         NULL,
-                                        _download_complete_cb,
+                                        _download_finished_cb,
                                         NULL);
   g_object_unref (G_OBJECT (data));
 }

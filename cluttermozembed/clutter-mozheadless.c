@@ -64,6 +64,15 @@ enum
   PROP_PRIVATE
 };
 
+enum
+{
+  CANCEL_DOWNLOAD,
+
+  LAST_SIGNAL
+};
+
+static guint signals[LAST_SIGNAL] = { 0, };
+
 struct _ClutterMozHeadlessPrivate
 {
   /* Connection/comms variables */
@@ -873,6 +882,12 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
           moz_headless_purge_session_history (MOZ_HEADLESS (moz_headless));
           break;
         }
+      case CME_COMMAND_DL_CANCEL :
+        {
+          gint id = clutter_mozembed_comms_receive_int (view->input);
+          g_signal_emit (view->parent, signals[CANCEL_DOWNLOAD], 0, id);
+          break;
+        }
       default :
         g_warning ("Unknown command (%d)", command);
     }
@@ -1320,6 +1335,15 @@ clutter_mozheadless_class_init (ClutterMozHeadlessClass *klass)
                                                          G_PARAM_STATIC_NICK |
                                                          G_PARAM_STATIC_BLURB |
                                                          G_PARAM_CONSTRUCT_ONLY));
+
+  signals[CANCEL_DOWNLOAD] =
+    g_signal_new ("cancel-download",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozHeadlessClass, cancel_download),
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__INT,
+                  G_TYPE_NONE, 1, G_TYPE_INT);
 }
 
 static void

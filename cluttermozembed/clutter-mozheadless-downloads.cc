@@ -52,9 +52,14 @@ public:
   NS_DECL_NSIWEBPROGRESSLISTENER
   NS_DECL_NSIWEBPROGRESSLISTENER2
 
+  void     CancelDownload();
+
+  gint                           mDownloadId;
+
 private:
-  MozHeadless *mMozHeadless;
-  gint         mDownloadId;
+  MozHeadless                   *mMozHeadless;
+  nsIHelperAppLauncher          *mLauncher;
+  gboolean                       mCancelled;
 
   static gint sDownloadId;
 
@@ -75,15 +80,31 @@ HeadlessDownloads::HeadlessDownloads()
 {
   mMozHeadless = NULL;
   mDownloadId = sDownloadId ++;
+  mLauncher = nsnull;
+  mCancelled = FALSE;
+}
+
+static void
+_cancel_download_cb (ClutterMozHeadless *moz_headless,
+                     gint                id,
+                     HeadlessDownloads  *download)
+{
+  if (download->mDownloadId == id)
+    download->CancelDownload ();
 }
 
 HeadlessDownloads::~HeadlessDownloads()
 {
   if (mMozHeadless) {
-    send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
-                       CME_FEEDBACK_DL_COMPLETE,
-                       G_TYPE_INT, mDownloadId,
-                       G_TYPE_INVALID);
+    g_signal_handlers_disconnect_by_func (mMozHeadless,
+                                          (void *)_cancel_download_cb,
+                                          (void *)this);
+
+    if (!mCancelled)
+      send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
+                         CME_FEEDBACK_DL_COMPLETE,
+                         G_TYPE_INT, mDownloadId,
+                         G_TYPE_INVALID);
 
     g_object_unref (G_OBJECT (mMozHeadless));
     mMozHeadless = NULL;
@@ -288,12 +309,18 @@ HeadlessDownloads::PromptForSaveToFile(nsIHelperAppLauncher  *aLauncher,
   // add a reference, which will be released when the download is finished
   aLauncher->SetWebProgressListener (this);
 
+  // Store a reference to the launcher so we can cancel downloads
+  mLauncher = aLauncher;
+
   // Add a reference on the window that started this download, so it doesn't
   // get destroyed until the download finishes
   mMozHeadless = moz_headless_get_from_dom_window ((gpointer)window);
   if (mMozHeadless)
     {
       g_object_ref (mMozHeadless);
+
+      g_signal_connect (mMozHeadless, "cancel-download",
+                        G_CALLBACK (_cancel_download_cb), this);
 
       // Inform ClutterMozEmbed of this new download
       if (NS_SUCCEEDED (aLauncher->GetSource(getter_AddRefs (uri))) &&
@@ -319,6 +346,23 @@ HeadlessDownloads::PromptForSaveToFile(nsIHelperAppLauncher  *aLauncher,
 
   file.forget(_retval);
   return NS_OK;
+}
+
+void
+HeadlessDownloads::CancelDownload()
+{
+  // Cancelling will release the reference on us and we'll dispose,
+  // so send the cancelled message first.
+  send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
+                     CME_FEEDBACK_DL_CANCELLED,
+                     G_TYPE_INT, mDownloadId,
+                     G_TYPE_INVALID);
+
+  mCancelled = TRUE;
+  if (mLauncher)
+    mLauncher->Cancel(NS_ERROR_ABORT);
+  else
+    g_warning ("Failed to cancel download due to NULL launcher");
 }
 
 // nsIWebProgressListener
