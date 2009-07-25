@@ -1188,7 +1188,9 @@ clutter_mozheadless_constructed (GObject *object)
 {
   ClutterMozHeadless *self = CLUTTER_MOZHEADLESS (object);
   ClutterMozHeadlessPrivate *priv = self->priv;
+#ifdef SUPPORT_PLUGINS
   GdkWindow *plugin_viewport;
+#endif
 
   if (G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed)
     G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed (object);
@@ -1242,11 +1244,13 @@ clutter_mozheadless_constructed (GObject *object)
   g_signal_connect (object, "hide-tooltip",
                     G_CALLBACK (hide_tooltip_cb), NULL);
 
+#ifdef SUPPORT_PLUGINS
   plugin_viewport = moz_headless_get_plugin_window (MOZ_HEADLESS (self));
   send_feedback_all (self, CME_FEEDBACK_PLUGIN_VIEWPORT,
                      G_TYPE_ULONG,
                      (unsigned long)GDK_WINDOW_XID (plugin_viewport),
                      G_TYPE_INVALID);
+#endif
 
   spawned_heads ++;
 

@@ -596,6 +596,7 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
       }
     case CME_FEEDBACK_PLUGIN_VIEWPORT :
       {
+#ifdef SUPPORT_PLUGINS
         unsigned long window =
           clutter_mozembed_comms_receive_ulong (priv->input);
 
@@ -604,7 +605,7 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
             priv->plugin_viewport = window;
             clutter_mozembed_init_viewport (self);
           }
-
+#endif
         break;
       }
     default :
