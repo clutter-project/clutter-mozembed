@@ -72,6 +72,8 @@ private:
                              nsILocalFile     **aFile);
   nsresult GetDownloadDir(nsIPrefBranch  *root_branch,
                           nsIFile       **download_dir);
+  nsresult CheckFileOrPartExists(nsILocalFile *file,
+                                 PRBool       *exists);
 };
 
 gint HeadlessDownloads::sDownloadId = 0;
@@ -163,6 +165,38 @@ HeadlessDownloads::PromptWithFilePicker(nsIDOMWindow      *window,
 }
 
 nsresult
+HeadlessDownloads::CheckFileOrPartExists(nsILocalFile *file,
+                                         PRBool       *exists)
+{
+  nsresult rv;
+  nsAutoString leaf_name;
+
+  // Check whether the original file exists */
+  rv = file->Exists (exists);
+  if (NS_FAILED (rv) || *exists)
+    return rv;
+
+  // If that doesn't exist, check whether the file with ".part"
+  // appended exists
+  rv = file->GetLeafName (leaf_name);
+  NS_ENSURE_SUCCESS (rv, rv);
+
+  leaf_name.Append (NS_LITERAL_STRING (".part"));
+
+  nsCOMPtr<nsIFile> fileCopy;
+  nsCOMPtr<nsILocalFile> localFileCopy;
+
+  rv = file->Clone (getter_AddRefs (fileCopy));
+  NS_ENSURE_SUCCESS (rv, rv);
+  localFileCopy = do_QueryInterface (fileCopy, &rv);
+  NS_ENSURE_SUCCESS (rv, rv);
+  rv = localFileCopy->SetLeafName (leaf_name);
+  NS_ENSURE_SUCCESS (rv, rv);
+
+  return localFileCopy->Exists (exists);
+}
+
+nsresult
 HeadlessDownloads::CalculateFilename(nsIFile           *download_dir,
                                      const PRUnichar   *aDefaultFile,
                                      nsILocalFile     **aFile)
@@ -179,7 +213,7 @@ HeadlessDownloads::CalculateFilename(nsIFile           *download_dir,
   rv = localFileCopy->AppendRelativePath (nsDependentString (aDefaultFile));
   NS_ENSURE_SUCCESS (rv, rv);
 
-  rv = localFileCopy->Exists (&file_exists);
+  rv = CheckFileOrPartExists (localFileCopy, &file_exists);
   NS_ENSURE_SUCCESS (rv, rv);
   if (!file_exists)
     localFileCopy.forget (aFile);
@@ -214,7 +248,7 @@ HeadlessDownloads::CalculateFilename(nsIFile           *download_dir,
           rv = localFileCopy->AppendRelativePath (filename);
           NS_ENSURE_SUCCESS (rv, rv);
 
-          rv = localFileCopy->Exists (&file_exists);
+          rv = CheckFileOrPartExists (localFileCopy, &file_exists);
           NS_ENSURE_SUCCESS (rv, rv);
           if (!file_exists)
             {
