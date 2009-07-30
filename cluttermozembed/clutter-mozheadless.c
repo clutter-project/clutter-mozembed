@@ -197,10 +197,12 @@ icon_cb (ClutterMozHeadless *headless)
 
 static void
 progress_cb (ClutterMozHeadless *headless,
-             gint                curprogress,
-             gint                maxprogress)
+             gint64              curprogress,
+             gint64              maxprogress)
 {
-  gdouble progress = curprogress / (gdouble)maxprogress;
+  gdouble progress = (curprogress > maxprogress) ?
+                       curprogress / (gdouble)maxprogress :
+                       -1.0;
   send_feedback_all (headless, CME_FEEDBACK_PROGRESS,
                      G_TYPE_DOUBLE, progress,
                      G_TYPE_INVALID);
