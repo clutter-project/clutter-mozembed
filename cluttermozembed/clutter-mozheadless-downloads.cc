@@ -33,6 +33,7 @@
 #include <nsIWebProgressListener.h>
 #include <nsIWebProgressListener2.h>
 #include <nsIPrefService.h>
+#include <nsITimer.h>
 #include <nsStringGlue.h>
 #include <nsNetUtil.h>
 #include <nsDirectoryServiceDefs.h>
@@ -60,6 +61,9 @@ private:
   MozHeadless                   *mMozHeadless;
   nsIHelperAppLauncher          *mLauncher;
   gboolean                       mCancelled;
+  nsCOMPtr<nsITimer>             mThrottleTimer;
+  gint64                         mCurProgress;
+  gint64                         mMaxProgress;
 
   static gint sDownloadId;
 
@@ -74,6 +78,9 @@ private:
                           nsIFile       **download_dir);
   nsresult CheckFileOrPartExists(nsILocalFile *file,
                                  PRBool       *exists);
+
+  static void TimeoutHandler (nsITimer *timer, void *data);
+  void SendProgress ();
 };
 
 gint HeadlessDownloads::sDownloadId = 0;
@@ -111,6 +118,9 @@ HeadlessDownloads::~HeadlessDownloads()
     g_object_unref (G_OBJECT (mMozHeadless));
     mMozHeadless = NULL;
   }
+
+  if (mThrottleTimer)
+    mThrottleTimer->Cancel ();
 }
 
 NS_IMPL_ISUPPORTS3(HeadlessDownloads,
@@ -451,6 +461,18 @@ HeadlessDownloads::OnSecurityChange(nsIWebProgress *aWebProgress,
   return NS_OK;
 }
 
+void
+HeadlessDownloads::SendProgress ()
+{
+  if (mMozHeadless)
+    send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
+                       CME_FEEDBACK_DL_PROGRESS,
+                       G_TYPE_INT, mDownloadId,
+                       G_TYPE_INT64, (gint64)mCurProgress,
+                       G_TYPE_INT64, (gint64)mMaxProgress,
+                       G_TYPE_INVALID);
+}
+
 // nsIWebProgressListener2
 
 NS_IMETHODIMP
@@ -461,17 +483,25 @@ HeadlessDownloads::OnProgressChange64(nsIWebProgress *aWebProgress,
                                       PRInt64         aCurTotalProgress,
                                       PRInt64         aMaxTotalProgress)
 {
-  if (mMozHeadless)
+  this->mCurProgress = aCurTotalProgress;
+  this->mMaxProgress = aMaxTotalProgress;
+
+  /* If there is already a timer started to throttle the progress
+     reports then we don't need to do anything */
+  if (!mThrottleTimer)
     {
-      /* FIXME: We almost certainly need to throttle this, or
-       *        wait for acknowledgement from the embedder.
-       */
-      send_feedback_all (CLUTTER_MOZHEADLESS (mMozHeadless),
-                         CME_FEEDBACK_DL_PROGRESS,
-                         G_TYPE_INT, mDownloadId,
-                         G_TYPE_INT64, (gint64)aCurTotalProgress,
-                         G_TYPE_INT64, (gint64)aMaxTotalProgress,
-                         G_TYPE_INVALID);
+      nsresult rv;
+
+      SendProgress ();
+
+      mThrottleTimer = do_CreateInstance ("@mozilla.org/timer;1", &rv);
+      NS_ENSURE_SUCCESS (rv, rv);
+
+      /* Start a timer so that we don't report the progress again for
+         another 160ms */
+      mThrottleTimer->InitWithFuncCallback (TimeoutHandler, this, 160,
+                                            nsITimer::TYPE_ONE_SHOT);
+      NS_ENSURE_SUCCESS (rv, rv);
     }
 
   return NS_OK;
@@ -485,6 +515,17 @@ HeadlessDownloads::OnRefreshAttempted(nsIWebProgress *aWebProgress,
                                       PRBool         *_retval NS_OUTPARAM)
 {
   return NS_OK;
+}
+
+
+void
+HeadlessDownloads::TimeoutHandler (nsITimer *timer, void *data)
+{
+  HeadlessDownloads *self = reinterpret_cast<HeadlessDownloads *> (data);
+
+  self->mThrottleTimer = nsnull;
+
+  self->SendProgress ();
 }
 
 #define HEADLESS_DOWNLOADS_CID \
