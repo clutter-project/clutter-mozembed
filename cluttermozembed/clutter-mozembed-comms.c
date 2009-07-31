@@ -83,7 +83,10 @@ clutter_mozembed_comms_sendv (GIOChannel *channel, gint command_id, va_list args
 
         case G_TYPE_STRING :
           buffer = va_arg (args, gpointer);
-          size = strlen (buffer) + 1;
+          if (buffer)
+            size = strlen (buffer) + 1;
+          else
+            size = 0;
           g_io_channel_write_chars (channel,
                                     (gchar *)(&size),
                                     sizeof (size),
@@ -106,11 +109,12 @@ clutter_mozembed_comms_sendv (GIOChannel *channel, gint command_id, va_list args
           continue;
         }
 
-      g_io_channel_write_chars (channel,
-                                buffer,
-                                size,
-                                NULL,
-                                NULL);
+      if (size)
+        g_io_channel_write_chars (channel,
+                                  buffer,
+                                  size,
+                                  NULL,
+                                  NULL);
     }
 
   g_io_channel_flush (channel, NULL);
@@ -199,16 +203,20 @@ clutter_mozembed_comms_receive (GIOChannel *channel, ...)
                                                 &error);
             } while (status == G_IO_STATUS_AGAIN);
 
-          *((gchar **)buffer) = g_malloc (size);
-
-          do
+          if (size)
             {
-              status = g_io_channel_read_chars (channel,
-                                                *((gchar **)buffer),
-                                                size,
-                                                NULL,
-                                                &error);
-            } while (status == G_IO_STATUS_AGAIN);
+              *((gchar **)buffer) = g_malloc (size);
+
+              do
+                {
+                  status = g_io_channel_read_chars (channel,
+                                                    *((gchar **)buffer),
+                                                    size,
+                                                    NULL,
+                                                    &error);
+                } while (status == G_IO_STATUS_AGAIN);
+            } else
+              *((gchar **)buffer) = NULL;
         }
       else do
         {
