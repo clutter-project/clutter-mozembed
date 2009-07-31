@@ -562,6 +562,13 @@ clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
   priv->mmap_start = mmap (NULL, priv->mmap_length, PROT_READ | PROT_WRITE,
                            MAP_SHARED, priv->shm_fd, 0);
 
+  if (priv->mmap_start == MAP_FAILED)
+    {
+      g_warning ("Unable to mmap region for headless surface\n");
+      priv->mmap_start = NULL;
+      return;
+    }
+
   moz_headless_set_surface (headless, priv->mmap_start,
                             priv->surface_width, priv->surface_height,
                             priv->surface_width * 4);

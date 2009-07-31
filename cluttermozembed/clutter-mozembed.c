@@ -166,6 +166,13 @@ update (ClutterMozEmbed *self,
       priv->image_size = surface_width * surface_height * 4;
       priv->image_data = mmap (NULL, priv->image_size, PROT_READ,
                                MAP_SHARED, priv->shm_fd, 0);
+
+      if (priv->image_data == MAP_FAILED)
+        {
+          g_warning ("Unable to mmap image data\n");
+          priv->image_data = NULL;
+          return;
+        }
     }
 
   /*g_debug ("Reading data");*/
