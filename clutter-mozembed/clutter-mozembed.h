@@ -24,7 +24,7 @@
 #include <glib-object.h>
 #include <clutter/clutter.h>
 #include <moz-headless.h>
-#include "clutter-mozembed-download.h"
+#include <clutter-mozembed/clutter-mozembed-download.h>
 
 G_BEGIN_DECLS
 
