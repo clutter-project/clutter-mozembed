@@ -36,7 +36,7 @@ PKG_CHECK_MODULES(GOBJECT, gobject-2.0 >= 2.12.0 gio-2.0)
 PKG_CHECK_MODULES(GTHREAD, gthread-2.0)
 PKG_CHECK_MODULES(CLUTTER, clutter-1.0 >= 1.0.0)
 PKG_CHECK_MODULES(MOZILLA, mozilla-js mozilla-headless >= 1.9.2a1pre)
-PKG_CHECK_MODULES(MHS, mhs-1.0)
+PKG_CHECK_MODULES(MHS, mhs-1.0 >= 0.10.0)
 
 MOZHOME=`${PKG_CONFIG} --variable=prefix mozilla-headless`"/lib/xulrunner-"`${PKG_CONFIG} --modversion mozilla-headless`
 AC_SUBST([MOZHOME])
