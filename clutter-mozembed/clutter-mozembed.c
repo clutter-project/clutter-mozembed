@@ -2241,7 +2241,7 @@ clutter_mozembed_constructed (GObject *object)
   gboolean success;
 
   gchar *argv[] = {
-    "clutter-mozheadless",  /* TODO: Should probably use an absolute path.. */
+    CMH_BIN,
     NULL, /* Output pipe */
     NULL, /* Input pipe */
     NULL, /* SHM name */

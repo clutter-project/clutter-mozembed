@@ -4,7 +4,8 @@ GLIB_MKENUMS = `pkg-config --variable=glib_mkenums glib-2.0`
 
 AM_CPPFLAGS = \
 	-DPKGDATADIR=\"$(pkgdatadir)\" \
-	-DMOZHOME=\"$(MOZHOME)\"
+	-DMOZHOME=\"$(MOZHOME)\" \
+	-DCMH_BIN=\"$(libexecdir)/clutter-mozheadless\"
 
 AM_CFLAGS = \
 	$(GOBJECT_CFLAGS) \
@@ -68,7 +69,7 @@ source_c = \
 	clutter-mozembed-comms.h \
 	clutter-mozembed-download.c
 
-bin_PROGRAMS = clutter-mozheadless
+libexec_PROGRAMS = clutter-mozheadless
 
 clutter_mozheadless_LDADD = \
 	@GOBJECT_LIBS@ \
@@ -97,28 +98,25 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozheadless-cookies.cc \
 	clutter-mozheadless-cookies.h
 
-lib_LTLIBRARIES = libcluttermozembed.la
+lib_LTLIBRARIES = libclutter-mozembed-@CME_API_VERSION@.la
 
-libcluttermozembed_la_LIBADD = \
+libclutter_mozembed_@CME_API_VERSION@_la_LIBADD = \
 	@GOBJECT_LIBS@ \
 	@GTHREAD_LIBS@ \
 	@CLUTTER_LIBS@
 
 if SUPPORT_PLUGINS
-libcluttermozembed_la_LIBADD += @GTK_LIBS@
+libclutter_mozembed_@CME_API_VERSION@_la_LIBADD += @GTK_LIBS@
 endif
 
-libcluttermozembed_la_SOURCES = \
+libclutter_mozembed_@CME_API_VERSION@_la_SOURCES = \
 	$(source_c) \
 	$(source_h) \
 	$(source_priv_h) \
 	$(BUILT_SOURCES)
 
-library_includedir=$(includedir)/cluttermozembed
+library_includedir=$(includedir)/clutter-$(CLUTTER_API_VERSION)/clutter-mozembed
 library_include_HEADERS = $(source_h)
-
-pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA = cluttermozembed.pc
 
 CLEANFILES = $(STAMP_FILES) $(BUILT_SOURCES) clutter-mozheadless-comms.c
 
