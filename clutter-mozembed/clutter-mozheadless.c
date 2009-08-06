@@ -481,39 +481,41 @@ cursor_changed_cb (MozHeadlessCursorType    type,
 
 #ifdef SUPPORT_IM
 static void
-im_reset_cb(ClutterMozHeadless *self)
+im_reset_cb (ClutterMozHeadless *self)
 {
-    send_feedback_all(self, CME_FEEDBACK_IM_RESET, G_TYPE_INVALID);
+  send_feedback_all(self, CME_FEEDBACK_IM_RESET, G_TYPE_INVALID);
 }
 
 static void
-im_enable_cb(ClutterMozHeadless *self, gboolean enabled)
+im_enable_cb (ClutterMozHeadless *self, gboolean enabled)
 {
-    send_feedback_all(self, CME_FEEDBACK_IM_ENABLE,
-                      G_TYPE_BOOLEAN, enabled,
-                      G_TYPE_INVALID);
+  send_feedback_all (self, CME_FEEDBACK_IM_ENABLE,
+                     G_TYPE_BOOLEAN, enabled,
+                     G_TYPE_INVALID);
 }
 
 static void
-im_focus_change_cb(ClutterMozHeadless *self, gboolean in)
+im_focus_change_cb (ClutterMozHeadless *self, gboolean in)
 {
-    send_feedback_all(self, CME_FEEDBACK_IM_FOCUS_CHANGE,
-                      G_TYPE_BOOLEAN, in,
-                      G_TYPE_INVALID);
+  send_feedback_all (self, CME_FEEDBACK_IM_FOCUS_CHANGE,
+                     G_TYPE_BOOLEAN, in,
+                     G_TYPE_INVALID);
 }
 
 static void
-im_set_cursor_cb(ClutterMozHeadless *self,
-                 gint x, gint y, gint width, gint height)
+im_set_cursor_cb (ClutterMozHeadless *self,
+                  gint                x,
+                  gint                y,
+                  gint                width,
+                  gint                height)
 {
-    send_feedback_all(self, CME_FEEDBACK_IM_SET_CURSOR,
-                      G_TYPE_INT, x,
-                      G_TYPE_INT, y,
-                      G_TYPE_INT, width,
-                      G_TYPE_INT, height,
-                      G_TYPE_INVALID);
+  send_feedback_all (self, CME_FEEDBACK_IM_SET_CURSOR,
+                     G_TYPE_INT, x,
+                     G_TYPE_INT, y,
+                     G_TYPE_INT, width,
+                     G_TYPE_INT, height,
+                     G_TYPE_INVALID);
 }
-
 #endif
 
 static void
@@ -935,29 +937,32 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
           break;
         }
 #ifdef SUPPORT_IM
-    case CME_COMMAND_IM_COMMIT:
-    {
-        gchar* str = clutter_mozembed_comms_receive_string(view->input);
+      case CME_COMMAND_IM_COMMIT:
+        {
+          gchar* str = clutter_mozembed_comms_receive_string (view->input);
 
-        moz_headless_im_commit(MOZ_HEADLESS (moz_headless), str);
-        g_free(str);
-        break;
-    }
-    case CME_COMMAND_IM_PREEDIT_CHANGED:
-    {
-        gchar* str;
-        gint cursor_pos;
-        
-        clutter_mozembed_comms_receive (view->input,
-                                        G_TYPE_STRING, &str,
-                                        G_TYPE_INT, &cursor_pos,
-                                        G_TYPE_INVALID);
-        moz_headless_im_preedit_changed(MOZ_HEADLESS(moz_headless), str, cursor_pos);
-        
-        g_free(str);
-        break;
-    }        
-#endif        
+          moz_headless_im_commit (MOZ_HEADLESS (moz_headless), str);
+          g_free (str);
+
+          break;
+        }
+      case CME_COMMAND_IM_PREEDIT_CHANGED:
+        {
+          gchar* str;
+          gint cursor_pos;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_STRING, &str,
+                                          G_TYPE_INT, &cursor_pos,
+                                          G_TYPE_INVALID);
+          moz_headless_im_preedit_changed (MOZ_HEADLESS (moz_headless),
+                                           str,
+                                           cursor_pos);
+          g_free (str);
+
+          break;
+        }
+#endif
       default :
         g_warning ("Unknown command (%d)", command);
     }
@@ -1322,7 +1327,7 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (im_focus_change_cb), NULL);
   g_signal_connect (object, "im-set-cursor",
                     G_CALLBACK (im_set_cursor_cb), NULL);
-#endif  
+#endif
 #ifdef SUPPORT_PLUGINS
   plugin_viewport = moz_headless_get_plugin_window (MOZ_HEADLESS (self));
   send_feedback_all (self, CME_FEEDBACK_PLUGIN_VIEWPORT,
