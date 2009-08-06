@@ -51,6 +51,13 @@ typedef enum
   CME_FEEDBACK_HIDE_TOOLTIP,
   CME_FEEDBACK_PRIVATE,
   CME_FEEDBACK_PLUGIN_VIEWPORT
+#ifdef SUPPORT_IM
+  ,
+  CME_FEEDBACK_IM_RESET,
+  CME_FEEDBACK_IM_ENABLE,
+  CME_FEEDBACK_IM_FOCUS_CHANGE,
+  CME_FEEDBACK_IM_SET_CURSOR
+#endif  
 } ClutterMozEmbedFeedback;
 
 typedef enum
@@ -84,6 +91,11 @@ typedef enum
   CME_COMMAND_MAP,
   CME_COMMAND_PURGE_SESSION_HISTORY,
   CME_COMMAND_DL_CANCEL
+#ifdef SUPPORT_IM
+  ,
+  CME_COMMAND_IM_COMMIT,
+  CME_COMMAND_IM_PREEDIT_CHANGED
+#endif  
 } ClutterMozEmbedCommand;
 
 void clutter_mozembed_comms_sendv (GIOChannel *channel, gint command_id, va_list args);

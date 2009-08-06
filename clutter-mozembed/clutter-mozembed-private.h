@@ -35,6 +35,10 @@
 #include "clutter-mozembed.h"
 #include "clutter-mozembed-download.h"
 
+#ifdef SUPPORT_IM
+#include "clutter-imcontext/clutter-immulticontext.h"
+#endif
+
 struct _ClutterMozEmbedPrivate
 {
   GFileMonitor    *monitor;
@@ -119,6 +123,11 @@ struct _ClutterMozEmbedPrivate
 #endif
 
   MozHeadlessCursorType cursor;
+    
+#ifdef SUPPORT_IM
+    ClutterIMContext *im_context;
+    gboolean im_enabled;
+#endif    
 };
 
 ClutterMozEmbedDownload *clutter_mozembed_download_new (ClutterMozEmbed *parent,

@@ -28,6 +28,11 @@ AM_CPPFLAGS += $(GTK_CFLAGS)
 AM_CXXFLAGS += $(GTK_CFLAGS)
 endif
 
+if SUPPORT_IM
+AM_CFLAGS += $(CLUTTERIMCONTEXT_CFLAGS)
+AM_CXXFLAGS += $(CLUTTERIMCONTEXT_CFLAGS)
+endif
+
 BUILT_SOURCES = \
 	clutter-mozembed-marshal.h \
 	clutter-mozembed-marshal.c
@@ -107,6 +112,10 @@ libclutter_mozembed_@CME_API_VERSION@_la_LIBADD = \
 
 if SUPPORT_PLUGINS
 libclutter_mozembed_@CME_API_VERSION@_la_LIBADD += @GTK_LIBS@
+endif
+
+if SUPPORT_IM
+libclutter_mozembed_@CME_API_VERSION@_la_LIBADD += @CLUTTERIMCONTEXT_LIBS@
 endif
 
 libclutter_mozembed_@CME_API_VERSION@_la_SOURCES = \

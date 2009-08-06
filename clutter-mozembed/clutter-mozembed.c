@@ -32,6 +32,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 
+
 G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_TYPE_TEXTURE)
 
 #define MOZEMBED_PRIVATE(o) \
@@ -107,6 +108,16 @@ clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed);
 
 static int trapped_x_error = 0;
 static int (*prev_error_handler) (Display *, XErrorEvent *);
+#endif
+
+#ifdef SUPPORT_IM
+static void
+clutter_mozembed_imcontext_commit_cb (ClutterIMContext *context,
+                                      const gchar      *str,
+                                      ClutterMozEmbed  *self);
+static void
+clutter_mozembed_imcontext_preedit_changed_cb (ClutterIMContext *context,
+                                               ClutterMozEmbed  *self);
 #endif
 
 static void
@@ -623,6 +634,54 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
 #endif
         break;
       }
+#ifdef SUPPORT_IM
+    case CME_FEEDBACK_IM_RESET:
+      {
+        if (!priv->im_enabled)
+          break;
+
+        clutter_im_context_reset (priv->im_context);
+
+        break;
+      }
+    case CME_FEEDBACK_IM_ENABLE:
+      {
+        priv->im_enabled = clutter_mozembed_comms_receive_boolean (priv->input);
+
+        break;
+      }
+    case CME_FEEDBACK_IM_FOCUS_CHANGE:
+      {
+        gboolean in = clutter_mozembed_comms_receive_boolean (priv->input);
+
+        if (!priv->im_enabled)
+          break;
+
+        if (in)
+          clutter_im_context_focus_in (priv->im_context);
+        else
+          clutter_im_context_focus_out (priv->im_context);
+
+        break;
+      }
+    case CME_FEEDBACK_IM_SET_CURSOR:
+      {
+        ClutterIMRectangle rect;
+
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_INT, &(rect.x),
+                                        G_TYPE_INT, &(rect.y),
+                                        G_TYPE_INT, &(rect.width),
+                                        G_TYPE_INT, &(rect.height),
+                                        G_TYPE_INVALID);
+        if (!priv->im_enabled)
+          break;
+
+        clutter_im_context_set_cursor_location (priv->im_context, &rect);
+
+        break;
+    }
+#endif
     default :
       g_warning ("Unrecognised feedback received (%d)", feedback);
     }
@@ -1973,6 +2032,12 @@ clutter_mozembed_key_press_event (ClutterActor *actor, ClutterKeyEvent *event)
 
   priv = CLUTTER_MOZEMBED (actor)->priv;
 
+#ifdef SUPPORT_IM
+  if (priv->im_enabled &&
+      clutter_im_context_filter_keypress (priv->im_context, event))
+    return TRUE;
+#endif
+
   if ((!clutter_mozembed_get_keyval (event, &keyval)) &&
       (event->unicode_value == '\0'))
     return FALSE;
@@ -1995,6 +2060,12 @@ clutter_mozembed_key_release_event (ClutterActor *actor, ClutterKeyEvent *event)
   guint keyval;
 
   priv = CLUTTER_MOZEMBED (actor)->priv;
+
+#ifdef SUPPORT_IM
+  if (priv->im_enabled &&
+      clutter_im_context_filter_keypress (priv->im_context, event))
+    return TRUE;
+#endif
 
   if (clutter_mozembed_get_keyval (event, &keyval))
     {
@@ -2791,6 +2862,41 @@ _destroy_download_cb (gpointer data)
   g_object_unref (G_OBJECT (data));
 }
 
+#ifdef SUPPORT_IM
+static void
+clutter_mozembed_imcontext_commit_cb(ClutterIMContext *context,
+                                     const gchar      *str,
+                                     ClutterMozEmbed  *mozembed)
+{
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_IM_COMMIT,
+                               G_TYPE_STRING,  str,
+                               G_TYPE_INVALID);
+}
+
+static void
+clutter_mozembed_imcontext_preedit_changed_cb (ClutterIMContext *context,
+                                               ClutterMozEmbed  *mozembed)
+{
+  gchar *str;
+  PangoAttrList *attrs;
+  gint cursor_pos;
+
+  clutter_im_context_get_preedit_string (context,
+                                         &str,
+                                         &attrs,
+                                         &cursor_pos);
+
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_IM_PREEDIT_CHANGED,
+                               G_TYPE_STRING, str,
+                               G_TYPE_INT, cursor_pos,
+                               G_TYPE_INVALID);
+  g_free(str);
+  pango_attr_list_unref(attrs);
+}
+#endif
+
 static void
 clutter_mozembed_init (ClutterMozEmbed *self)
 {
@@ -2811,6 +2917,20 @@ clutter_mozembed_init (ClutterMozEmbed *self)
 
   /* Turn off sync-size (we manually size the texture on allocate) */
   g_object_set (G_OBJECT (self), "sync-size", FALSE, NULL);
+
+#ifdef SUPPORT_IM
+  priv->im_enabled = FALSE;
+
+  priv->im_context = clutter_im_multicontext_new ();
+  priv->im_context->actor = CLUTTER_ACTOR (self);
+
+  g_signal_connect (priv->im_context, "commit",
+                    G_CALLBACK (clutter_mozembed_imcontext_commit_cb),
+                    self);
+  g_signal_connect (priv->im_context, "preedit-changed",
+                    G_CALLBACK (clutter_mozembed_imcontext_preedit_changed_cb),
+                    self);
+#endif
 }
 
 ClutterActor *

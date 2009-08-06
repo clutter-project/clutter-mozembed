@@ -31,6 +31,17 @@ AC_DEFINE([SUPPORT_PLUGINS], [], [Enables support for mozilla plugins])
 fi
 AM_CONDITIONAL([SUPPORT_PLUGINS], [test "x$ENABLED_PLUGINS" = "xyes"])
 
+AC_ARG_ENABLE(im,
+      AS_HELP_STRING([--enable-im], 
+                     ["Support clutter imcontext"]),
+      [ENABLED_IM=$enableval],
+      [im=no])
+
+if test "x$ENABLED_IM" = "xyes"; then
+PKG_CHECK_MODULES(CLUTTERIMCONTEXT, clutter-imcontext-0.1)
+AC_DEFINE([SUPPORT_IM], [], [Enables support for clutter imcontext])
+fi
+AM_CONDITIONAL([SUPPORT_IM], [test "x$ENABLED_IM" = "xyes"])
 
 PKG_CHECK_MODULES(GOBJECT, gobject-2.0 >= 2.12.0 gio-2.0)
 PKG_CHECK_MODULES(GTHREAD, gthread-2.0)
