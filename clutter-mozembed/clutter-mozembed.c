@@ -160,6 +160,14 @@ update (ClutterMozEmbed *self,
         (surface_height != (gint)tex_height))
       return;
 
+  /* Watch out for a resize of the source data, only happens for read-only */
+  if (priv->image_data &&
+      (priv->image_size != surface_width * surface_height * 4))
+    {
+      munmap (priv->image_data, priv->image_size);
+      priv->image_data = NULL;
+    }
+
   if (!priv->image_data)
     {
       /*g_debug ("mmapping data");*/
