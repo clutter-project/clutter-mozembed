@@ -96,6 +96,8 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozheadless-history.h \
 	clutter-mozheadless-login-manager-storage.cc \
 	clutter-mozheadless-login-manager-storage.h \
+	clutter-mozheadless-permission-manager.cc \
+	clutter-mozheadless-permission-manager.h \
 	clutter-mozheadless-prefs.cc \
 	clutter-mozheadless-prefs.h \
 	clutter-mozheadless-certs.cc \

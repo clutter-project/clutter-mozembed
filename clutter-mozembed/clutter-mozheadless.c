@@ -43,6 +43,7 @@
 #include "clutter-mozheadless-cookies.h"
 #include "clutter-mozheadless-certs.h"
 #include "clutter-mozheadless-login-manager-storage.h"
+#include "clutter-mozheadless-permission-manager.h"
 
 #include "clutter-mozembed.h"
 
@@ -1512,6 +1513,7 @@ main (int argc, char **argv)
       clutter_mozheadless_history_init ();
       clutter_mozheadless_cookies_init ();
       clutter_mozheadless_login_manager_storage_init ();
+      clutter_mozheadless_permission_manager_init ();
     }
 
   moz_headless = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
@@ -1537,6 +1539,7 @@ main (int argc, char **argv)
       clutter_mozheadless_history_deinit ();
       clutter_mozheadless_cookies_deinit ();
       clutter_mozheadless_login_manager_storage_deinit ();
+      clutter_mozheadless_permission_manager_deinit ();
     }
 
   return 0;
