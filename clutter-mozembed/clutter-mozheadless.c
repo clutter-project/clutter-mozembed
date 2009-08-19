@@ -189,7 +189,7 @@ icon_cb (ClutterMozHeadless *headless)
   gchar *icon;
 
   icon = moz_headless_get_icon (MOZ_HEADLESS (headless));
-  send_feedback_all (headless, CME_FEEDBACK_TITLE,
+  send_feedback_all (headless, CME_FEEDBACK_ICON,
                      G_TYPE_STRING, icon,
                      G_TYPE_INVALID);
 
