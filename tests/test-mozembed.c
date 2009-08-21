@@ -14,8 +14,10 @@ progress_cb (ClutterMozEmbedDownload *download,
              ClutterActor            *rect)
 {
   gdouble progress =
-    clutter_mozembed_download_get_progress (download) /
-      (gdouble)clutter_mozembed_download_get_max_progress (download);
+    clutter_mozembed_download_get_complete (download) ?
+      1.0 :
+      (clutter_mozembed_download_get_progress (download) /
+        (gdouble)clutter_mozembed_download_get_max_progress (download));
   clutter_actor_set_width (rect, 280 * progress);
 }
 
@@ -60,6 +62,8 @@ download_cb (ClutterMozEmbed         *mozembed,
   clutter_actor_set_position (rect1, 20, 100);
 
   g_signal_connect (download, "notify::progress",
+                    G_CALLBACK (progress_cb), rect1);
+  g_signal_connect (download, "notify::complete",
                     G_CALLBACK (progress_cb), rect1);
 
   clutter_actor_show_all (stage);
