@@ -843,16 +843,15 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
 
       XMoveWindow (xdpy, priv->plugin_viewport, (int)abs_x, (int)abs_y);
 
-#warning "FIXME: plugin_viewport resizing needs to involve mozheadless"
-      /* FIXME
-       * Only mozheadless knows about scrollbars which affect the real
-       * viewport size. For now we assume no horizontal scrollbar, and a
-       * 50px vertical bar. */
-      if (geom.width > 50 && geom.height > 0)
+      /* Note, we cover the entire area of the page with the plugin window,
+       * but plugins aren't clipped currently, so they can end up overlapping
+       * XUL scrollbars. This is a bug in the backend though.
+       */
+      if (geom.width > 0 && geom.height > 0)
         {
 #ifndef DEBUG_PLUGIN_VIEWPORT
           XResizeWindow (xdpy, priv->plugin_viewport,
-                         geom.width - 50, geom.height);
+                         geom.width, geom.height);
 #else /* XXX: Handy when disabling redirection of the viewport
          for debugging... */
           XResizeWindow (xdpy, priv->plugin_viewport,
