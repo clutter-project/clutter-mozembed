@@ -834,6 +834,8 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
 
   clutter_actor_get_allocation_geometry (CLUTTER_ACTOR (mozembed), &geom);
 
+  clutter_mozembed_trap_x_errors ();
+
   if (mapped && reactive)
     {
       clutter_actor_get_transformed_position (CLUTTER_ACTOR (mozembed),
@@ -864,6 +866,9 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
        * xcomposite and live previews of plugins windows for hidden tabs */
       XMoveWindow (xdpy, priv->plugin_viewport, -geom.width, 0);
     }
+
+  XSync (xdpy, False);
+  clutter_mozembed_untrap_x_errors ();
 }
 
 static GdkFilterReturn
