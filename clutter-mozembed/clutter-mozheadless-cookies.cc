@@ -105,7 +105,8 @@ class HeadlessCookieService : public nsICookieService,
   HeadlessCookieService();
   virtual ~HeadlessCookieService();
 
-  static HeadlessCookieService *GetSingleton(void);
+  static HeadlessCookieService *GetSingleton  (void);
+  static gchar *                StringToAscii (const char *string);
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSICOOKIESERVICE
@@ -114,7 +115,7 @@ class HeadlessCookieService : public nsICookieService,
 
   static HeadlessCookieService *sHeadlessCookieService;
 
-private:
+ private:
   MhsCookies                   *mMhsCookies;
 };
 
@@ -363,6 +364,17 @@ HeadlessCookieService::GetCookieStringFromHttp (nsIURI      *aURI,
   return (nsresult)ns_result;
 }
 
+/* static */
+gchar *
+HeadlessCookieService::StringToAscii (const char *aString)
+{
+  gchar *ascii = g_strdup (aString);
+  for (gint i = 0; ascii[i] != '\0'; i++)
+    if (!g_ascii_isprint (ascii[i]))
+      ascii[i] = '?';
+  return ascii;
+}
+
 NS_IMETHODIMP
 HeadlessCookieService::SetCookieString (nsIURI     *aURI,
                                         nsIPrompt  *aPrompt,
@@ -371,6 +383,7 @@ HeadlessCookieService::SetCookieString (nsIURI     *aURI,
 {
   gboolean result;
   nsCAutoString uri;
+  gchar *cookie_valid;
   GError *error = NULL;
   guint ns_result = NS_OK;
 
@@ -378,10 +391,12 @@ HeadlessCookieService::SetCookieString (nsIURI     *aURI,
   if (NS_FAILED (rv))
     return rv;
 
+  cookie_valid = StringToAscii (aCookie);
   result = mhs_cookies_set_cookie_string (mMhsCookies,
                                           uri.get (),
-                                          aCookie,
+                                          cookie_valid,
                                           &error);
+  g_free (cookie_valid);
 
   if (!result) {
     ns_result = mhs_error_to_nsresult (error);
@@ -401,6 +416,7 @@ HeadlessCookieService::SetCookieStringFromHttp (nsIURI     *aURI,
                                                 nsIChannel *aChannel)
 {
   gboolean result;
+  gchar *cookie_valid;
   nsCAutoString uri, first_uri;
   GError *error = NULL;
   guint ns_result = NS_OK;
@@ -413,12 +429,14 @@ HeadlessCookieService::SetCookieStringFromHttp (nsIURI     *aURI,
   if (NS_FAILED (rv))
     return rv;
 
+  cookie_valid = StringToAscii (aCookie);
   result = mhs_cookies_set_cookie_string_from_http (mMhsCookies,
                                                     uri.get (),
                                                     first_uri.get (),
-                                                    aCookie,
+                                                    cookie_valid,
                                                     aServerTime,
                                                     &error);
+  g_free (cookie_valid);
 
   if (!result) {
     ns_result = mhs_error_to_nsresult (error);
