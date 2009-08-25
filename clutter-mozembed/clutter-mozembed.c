@@ -1363,7 +1363,6 @@ clutter_mozembed_dispose (GObject *object)
         }
 
       XSync (xdpy, False);
-      clutter_mozembed_untrap_x_errors ();
 
       XUnmapWindow (xdpy, priv->plugin_viewport);
       XReparentWindow (xdpy,
@@ -1373,6 +1372,7 @@ clutter_mozembed_dispose (GObject *object)
                        -height);
       XRemoveFromSaveSet (xdpy, priv->plugin_viewport);
       XSync (xdpy, False);
+      clutter_mozembed_untrap_x_errors ();
 
       priv->plugin_viewport_initialized = FALSE;
     }
