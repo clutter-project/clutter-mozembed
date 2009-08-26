@@ -89,7 +89,11 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozembed-comms.h \
 	clutter-mozheadless.c \
 	clutter-mozheadless.h \
+	clutter-mozheadless-certs.cc \
+	clutter-mozheadless-certs.h \
 	clutter-mozheadless-comms.c \
+	clutter-mozheadless-cookies.cc \
+	clutter-mozheadless-cookies.h \
 	clutter-mozheadless-downloads.cc \
 	clutter-mozheadless-downloads.h \
 	clutter-mozheadless-history.cc \
@@ -100,10 +104,8 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozheadless-permission-manager.h \
 	clutter-mozheadless-prefs.cc \
 	clutter-mozheadless-prefs.h \
-	clutter-mozheadless-certs.cc \
-	clutter-mozheadless-certs.h \
-	clutter-mozheadless-cookies.cc \
-	clutter-mozheadless-cookies.h
+	clutter-mozheadless-protocol-service.cc \
+	clutter-mozheadless-protocol-service.h
 
 lib_LTLIBRARIES = libclutter-mozembed-@CME_API_VERSION@.la
 

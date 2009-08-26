@@ -44,6 +44,7 @@
 #include "clutter-mozheadless-certs.h"
 #include "clutter-mozheadless-login-manager-storage.h"
 #include "clutter-mozheadless-permission-manager.h"
+#include "clutter-mozheadless-protocol-service.h"
 
 #include "clutter-mozembed.h"
 
@@ -1508,6 +1509,7 @@ main (int argc, char **argv)
   clutter_mozheadless_prefs_init ();
   clutter_mozheadless_downloads_init ();
   clutter_mozheadless_certs_init ();
+  clutter_mozheadless_protocol_service_init ();
   if (!private)
     {
       clutter_mozheadless_history_init ();
@@ -1534,6 +1536,7 @@ main (int argc, char **argv)
   clutter_mozheadless_prefs_deinit ();
   clutter_mozheadless_downloads_deinit ();
   clutter_mozheadless_certs_deinit ();
+  clutter_mozheadless_protocol_service_deinit ();
   if (!private)
     {
       clutter_mozheadless_history_deinit ();
