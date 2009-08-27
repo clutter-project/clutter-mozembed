@@ -102,7 +102,18 @@ HeadlessProtocolService::IsExposedProtocol (const char *aProtocolScheme,
                                             PRBool     *_retval NS_OUTPARAM)
 {
   ExternalProtocolHandlerExists (aProtocolScheme, _retval);
+
   *_retval = !(*_retval);
+  if (!(*_retval)) {
+    // See if mozilla can handle this protocol, we don't want to override
+    // for things like http or ftp
+    gchar *protocol_cid = g_strconcat ("@mozilla.org/network/protocol;1?name=",
+                                       aProtocolScheme, NULL);
+    nsCOMPtr<nsIProtocolHandler> handler = do_GetService (protocol_cid);
+    if (handler)
+      *_retval = PR_TRUE;
+  }
+
   return NS_OK;
 }
 
