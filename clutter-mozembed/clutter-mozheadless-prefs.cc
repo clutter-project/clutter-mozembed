@@ -34,6 +34,7 @@
 #include <nsIProperties.h>
 #include <nsIRelativeFilePref.h>
 #include <nsISupportsPrimitives.h>
+#include <nsIStringBundle.h>
 #include <nsCOMPtr.h>
 #include <nsMemory.h>
 #include <nsServiceManagerUtils.h>
@@ -71,6 +72,7 @@ class HeadlessPrefBranch : public nsIPrefBranch2,
 
  protected:
   HeadlessPrefBranch() { }
+  nsresult   GetDefaultFromPropertiesFile(const char *aPrefName, PRUnichar **return_buf);
   const char *getPrefName(const char *aPrefName);
   void freeObserverList(void);
   nsresult removeObserverInternal(PRInt32 observerNum);
@@ -926,6 +928,59 @@ HeadlessPrefBranch::SetIntPref(const char *aPrefName, PRInt32 aValue)
   return (nsresult)ns_result;
 }
 
+// This method is copied from nsPrefBranch with slight modifications
+// to make it get the URL over MHS
+nsresult
+HeadlessPrefBranch::GetDefaultFromPropertiesFile(const char *aPrefName,
+                                                 PRUnichar **return_buf)
+{
+  nsresult rv;
+  gint defaultBranchId;
+  GError *error = NULL;
+  gboolean result;
+
+  if (!mMhsPrefs)
+    return NS_ERROR_NOT_AVAILABLE;
+
+  // Get a 'default branch' with the same root
+  if (!mhs_prefs_get_default_branch(mMhsPrefs, mPrefRoot.get(),
+                                    &defaultBranchId, &error))
+    {
+      rv = mhs_error_to_nsresult (error);
+      g_error_free (error);
+      return rv;
+    }
+
+  // the default value contains a URL to a .properties file
+
+  nsCAutoString propertyFileURL;
+  result = mhs_prefs_branch_get_char(mMhsPrefs, defaultBranchId,
+                                     aPrefName, getter_Copies(propertyFileURL),
+                                     &error);
+  mhs_prefs_release_branch (mMhsPrefs, defaultBranchId, NULL);
+
+  if (!result)
+    {
+      rv = mhs_error_to_nsresult (error);
+      g_error_free (error);
+      return rv;
+    }
+
+  nsCOMPtr<nsIStringBundleService> bundleService =
+    do_GetService(NS_STRINGBUNDLE_CONTRACTID, &rv);
+  if (NS_FAILED(rv))
+    return rv;
+
+  nsCOMPtr<nsIStringBundle> bundle;
+  rv = bundleService->CreateBundle(propertyFileURL.get(),
+                                   getter_AddRefs(bundle));
+  if (NS_FAILED(rv))
+    return rv;
+
+  return bundle->GetStringFromName(NS_ConvertASCIItoUTF16(aPrefName).get(),
+                                   return_buf);
+}
+
 // Get/SetComplexValue copied from nsPrefBranch.cpp with slight modifications
 // for readability and for it to work
 NS_IMETHODIMP
@@ -968,9 +1023,13 @@ HeadlessPrefBranch::GetComplexValue(const char *aPrefName,
 
       // if we need to fetch the default value, do that instead, otherwise use the
       // value we pulled in at the top of this function
-      if (bNeedDefault != mIsDefault) {
-        // FIXME: Can't access default properties from non-default branch
-        return NS_ERROR_NOT_IMPLEMENTED;
+      if (bNeedDefault) {
+        nsAutoString utf16String;
+        rv = GetDefaultFromPropertiesFile(aPrefName,
+                                          getter_Copies(utf16String));
+        if (NS_SUCCEEDED(rv)) {
+          rv = theString->SetData(utf16String.get());
+        }
       } else {
         rv = GetCharPref(aPrefName, getter_Copies(utf8String));
         if (NS_SUCCEEDED(rv)) {
