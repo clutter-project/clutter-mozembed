@@ -370,7 +370,7 @@ HeadlessCookieService::StringToAscii (const char *aString)
 {
   gchar *ascii = g_strdup (aString);
   for (gint i = 0; ascii[i] != '\0'; i++)
-    if (!g_ascii_isprint (ascii[i]))
+    if (!g_ascii_isprint (ascii[i]) && !g_ascii_isspace (ascii[i]))
       ascii[i] = '?';
   return ascii;
 }
