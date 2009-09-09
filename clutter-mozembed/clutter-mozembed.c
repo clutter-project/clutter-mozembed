@@ -66,7 +66,8 @@ enum
   PROP_SECURITY,
   PROP_COMP_PATHS,
   PROP_CHROME_PATHS,
-  PROP_PRIVATE
+  PROP_PRIVATE,
+  PROP_USER_CHROME_PATH
 };
 
 enum
@@ -1199,6 +1200,10 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_boolean (value, self->priv->private);
     break;
 
+  case PROP_USER_CHROME_PATH :
+    g_value_set_string (value, self->priv->user_chrome_path);
+    break;
+
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
   }
@@ -1270,6 +1275,11 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
 
   case PROP_PRIVATE :
     priv->private = g_value_get_boolean (value);
+    break;
+
+  case PROP_USER_CHROME_PATH :
+    g_free (priv->user_chrome_path);
+    priv->user_chrome_path = g_value_dup_string (value);
     break;
 
   default:
@@ -1448,6 +1458,7 @@ clutter_mozembed_finalize (GObject *object)
 
   g_strfreev (priv->comp_paths);
   g_strfreev (priv->chrome_paths);
+  g_free (priv->user_chrome_path);
 
   if (priv->image_data)
     munmap (priv->image_data, priv->image_size);
@@ -1683,7 +1694,7 @@ clutter_mozembed_get_modifier (ClutterModifierType modifiers)
   mozifiers |= (modifiers & CLUTTER_CONTROL_MASK) ? MOZ_KEY_CONTROL_MASK : 0;
   mozifiers |= (modifiers & CLUTTER_MOD1_MASK) ? MOZ_KEY_ALT_MASK : 0;
   mozifiers |= (modifiers & CLUTTER_META_MASK) ? MOZ_KEY_META_MASK : 0;
-  
+
   return mozifiers;
 }
 
@@ -2015,7 +2026,6 @@ clutter_mozembed_get_keyval (ClutterKeyEvent *event, guint *keyval)
       *keyval = MOZ_KEY_SCROLL_LOCK;
       return TRUE;
     }
-  
 
   if (g_ascii_isalnum (event->unicode_value))
     {
@@ -2214,7 +2224,7 @@ clutter_mozembed_open_pipes (ClutterMozEmbed *self)
 {
   gint fd;
   GFile *file;
-  
+
   GError *error = NULL;
   ClutterMozEmbedPrivate *priv = self->priv;
 
@@ -2295,7 +2305,7 @@ clutter_mozembed_get_paths_env (ClutterMozEmbed *self)
   /* Copy the existing environment */
   env_names = g_listenv ();
   env_size = g_strv_length (env_names);
-  new_env = g_new (gchar *, env_size + 3);
+  new_env = g_new (gchar *, env_size + 4);
 
   for (i = 0; i < env_size; i++)
     new_env[i] = g_strconcat (env_names[i], "=", g_getenv (env_names[i]), NULL);
@@ -2311,6 +2321,12 @@ clutter_mozembed_get_paths_env (ClutterMozEmbed *self)
     new_env[i++] =
       clutter_mozembed_strv_to_env (priv->chrome_paths,
                                     "CLUTTER_MOZEMBED_CHROME_PATHS=");
+
+  if (priv->user_chrome_path)
+    new_env[i++] =
+      g_strconcat ("CLUTTER_MOZEMBED_DIRECTORIES=UChrm,",
+                   priv->user_chrome_path,
+                   NULL);
 
   new_env[i++] = NULL;
 
@@ -2752,6 +2768,19 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                          G_PARAM_STATIC_NICK |
                                                          G_PARAM_STATIC_BLURB |
                                                          G_PARAM_CONSTRUCT_ONLY));
+
+  g_object_class_install_property (object_class,
+                                   PROP_USER_CHROME_PATH,
+                                   g_param_spec_string ("user-chrome-path",
+                                                        "User-chrome path",
+                                                        "User-chrome search "
+                                                        "path.",
+                                                        NULL,
+                                                        G_PARAM_READWRITE |
+                                                        G_PARAM_STATIC_NAME |
+                                                        G_PARAM_STATIC_NICK |
+                                                        G_PARAM_STATIC_BLURB |
+                                                        G_PARAM_CONSTRUCT_ONLY));
 
   signals[PROGRESS] =
     g_signal_new ("progress",

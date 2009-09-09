@@ -1461,7 +1461,7 @@ int
 main (int argc, char **argv)
 {
   ClutterMozHeadless *moz_headless;
-  const gchar *paths;
+  const gchar *paths, *dirs;
   gboolean private;
 
 #ifdef SUPPORT_PLUGINS
@@ -1500,6 +1500,25 @@ main (int argc, char **argv)
       for (p = pathsv; *p; p++)
         moz_headless_add_chrome_path (*p);
       g_strfreev (pathsv);
+    }
+
+  if ((dirs = g_getenv ("CLUTTER_MOZEMBED_DIRECTORIES")))
+    {
+      gchar **dir_pairs = g_strsplit (dirs, ":", -1), **p;
+      for (p = dir_pairs; *p; p++)
+        {
+          gchar *key, *path;
+
+          key = *p;
+          path = strchr (key, ',');
+          if (!path)
+            continue;
+          path[0] = '\0';
+          path ++;
+
+          moz_headless_set_directory (key, path);
+        }
+      g_strfreev (dir_pairs);
     }
 
   moz_headless_push_startup ();

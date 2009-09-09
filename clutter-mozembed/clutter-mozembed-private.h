@@ -109,6 +109,8 @@ struct _ClutterMozEmbedPrivate
   gchar          **comp_paths;
   /* and for chrome manifest files */
   gchar          **chrome_paths;
+  /* And for user chrome files */
+  gchar           *user_chrome_path;
 
 #ifdef SUPPORT_PLUGINS
   Window           stage_xwin;
