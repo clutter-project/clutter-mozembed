@@ -2025,6 +2025,110 @@ clutter_mozembed_get_keyval (ClutterKeyEvent *event, guint *keyval)
     case CLUTTER_Scroll_Lock:
       *keyval = MOZ_KEY_SCROLL_LOCK;
       return TRUE;
+    case CLUTTER_a:
+    case CLUTTER_A:
+      *keyval = MOZ_KEY_A;
+      return TRUE;
+    case CLUTTER_b:
+    case CLUTTER_B:
+      *keyval = MOZ_KEY_B;
+      return TRUE;
+    case CLUTTER_c:
+    case CLUTTER_C:
+      *keyval = MOZ_KEY_C;
+      return TRUE;
+    case CLUTTER_d:
+    case CLUTTER_D:
+      *keyval = MOZ_KEY_D;
+      return TRUE;
+    case CLUTTER_e:
+    case CLUTTER_E:
+      *keyval = MOZ_KEY_E;
+      return TRUE;
+    case CLUTTER_f:
+    case CLUTTER_F:
+      *keyval = MOZ_KEY_F;
+      return TRUE;
+    case CLUTTER_g:
+    case CLUTTER_G:
+      *keyval = MOZ_KEY_G;
+      return TRUE;
+    case CLUTTER_h:
+    case CLUTTER_H:
+      *keyval = MOZ_KEY_H;
+      return TRUE;
+    case CLUTTER_i:
+    case CLUTTER_I:
+      *keyval = MOZ_KEY_I;
+      return TRUE;
+    case CLUTTER_j:
+    case CLUTTER_J:
+      *keyval = MOZ_KEY_J;
+      return TRUE;
+    case CLUTTER_k:
+    case CLUTTER_K:
+      *keyval = MOZ_KEY_K;
+      return TRUE;
+    case CLUTTER_l:
+    case CLUTTER_L:
+      *keyval = MOZ_KEY_L;
+      return TRUE;
+    case CLUTTER_m:
+    case CLUTTER_M:
+      *keyval = MOZ_KEY_M;
+      return TRUE;
+    case CLUTTER_n:
+    case CLUTTER_N:
+      *keyval = MOZ_KEY_N;
+      return TRUE;
+    case CLUTTER_o:
+    case CLUTTER_O:
+      *keyval = MOZ_KEY_O;
+      return TRUE;
+    case CLUTTER_p:
+    case CLUTTER_P:
+      *keyval = MOZ_KEY_P;
+      return TRUE;
+    case CLUTTER_q:
+    case CLUTTER_Q:
+      *keyval = MOZ_KEY_Q;
+      return TRUE;
+    case CLUTTER_r:
+    case CLUTTER_R:
+      *keyval = MOZ_KEY_R;
+      return TRUE;
+    case CLUTTER_s:
+    case CLUTTER_S:
+      *keyval = MOZ_KEY_S;
+      return TRUE;
+    case CLUTTER_t:
+    case CLUTTER_T:
+      *keyval = MOZ_KEY_T;
+      return TRUE;
+    case CLUTTER_u:
+    case CLUTTER_U:
+      *keyval = MOZ_KEY_U;
+      return TRUE;
+    case CLUTTER_v:
+    case CLUTTER_V:
+      *keyval = MOZ_KEY_V;
+      return TRUE;
+    case CLUTTER_w:
+    case CLUTTER_W:
+      *keyval = MOZ_KEY_W;
+      return TRUE;
+    case CLUTTER_x:
+    case CLUTTER_X:
+      *keyval = MOZ_KEY_X;
+      return TRUE;
+    case CLUTTER_y:
+    case CLUTTER_Y:
+      *keyval = MOZ_KEY_Y;
+      return TRUE;
+    case CLUTTER_z:
+    case CLUTTER_Z:
+      *keyval = MOZ_KEY_Z;
+      return TRUE;
     }
 
   if (g_ascii_isalnum (event->unicode_value))
