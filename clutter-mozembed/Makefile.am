@@ -104,6 +104,8 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozheadless-permission-manager.h \
 	clutter-mozheadless-prefs.cc \
 	clutter-mozheadless-prefs.h \
+	clutter-mozheadless-private-browsing.cc \
+	clutter-mozheadless-private-browsing.h \
 	clutter-mozheadless-protocol-service.cc \
 	clutter-mozheadless-protocol-service.h
 

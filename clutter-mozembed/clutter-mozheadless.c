@@ -45,6 +45,7 @@
 #include "clutter-mozheadless-login-manager-storage.h"
 #include "clutter-mozheadless-permission-manager.h"
 #include "clutter-mozheadless-protocol-service.h"
+#include "clutter-mozheadless-private-browsing.h"
 
 #include "clutter-mozembed.h"
 
@@ -1529,6 +1530,7 @@ main (int argc, char **argv)
   clutter_mozheadless_downloads_init ();
   clutter_mozheadless_certs_init ();
   clutter_mozheadless_protocol_service_init ();
+  clutter_mozheadless_private_browsing_init ();
   if (!private)
     {
       clutter_mozheadless_history_init ();
@@ -1544,6 +1546,14 @@ main (int argc, char **argv)
                                "private", private,
                                NULL);
 
+  /* If private mode is requested then also start Mozilla's private
+     mode. This largely won't make much difference because none of the
+     services that are pertinent to private mode are started anyway
+     but it provides a convenient place for apps to detect private
+     mode */
+  if (private)
+    clutter_mozheadless_private_browsing_enable ();
+
   moz_headless_set_change_cursor_callback (cursor_changed_cb,
                                            moz_headless);
 
@@ -1556,6 +1566,7 @@ main (int argc, char **argv)
   clutter_mozheadless_downloads_deinit ();
   clutter_mozheadless_certs_deinit ();
   clutter_mozheadless_protocol_service_deinit ();
+  clutter_mozheadless_private_browsing_deinit ();
   if (!private)
     {
       clutter_mozheadless_history_deinit ();
