@@ -69,6 +69,7 @@ source_h = \
 source_priv_h = \
 	clutter-mozembed-private.h
 source_c = \
+	clutter-mozembed-plugin-container.c\
 	clutter-mozembed.c \
 	clutter-mozembed-comms.c \
 	clutter-mozembed-comms.h \

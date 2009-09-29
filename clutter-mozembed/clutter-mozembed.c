@@ -94,10 +94,14 @@ static MozHeadlessModifier
   clutter_mozembed_get_modifier (ClutterModifierType modifiers);
 
 #ifdef SUPPORT_PLUGINS
+#include "clutter-mozembed-plugin-container.h"
+
 typedef struct _PluginWindow
 {
-  gint          x, y;
+  gint          x, y, width, height;
   ClutterActor *plugin_tfp;
+  GtkWidget    *socket;
+  guint        plug_id;
 } PluginWindow;
 
 static void
@@ -106,6 +110,18 @@ clutter_mozembed_allocate_plugins (ClutterMozEmbed        *mozembed,
 
 static gboolean
 clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed);
+
+static void
+clutter_mozembed_add_plugin (ClutterMozEmbed *mozembed, guint plug_id,
+                             gint x, gint y, gint width, gint height);
+
+static void
+clutter_mozembed_update_plugin_bounds (ClutterMozEmbed *mozembed,  guint plug_id,
+                                       gint x, gint y, gint width, gint height);
+
+static void
+clutter_mozembed_update_plugin_visibility (ClutterMozEmbed *mozembed,  guint plug_id,
+                                           gboolean visible);
 
 static int trapped_x_error = 0;
 static int (*prev_error_handler) (Display *, XErrorEvent *);
@@ -621,22 +637,59 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
 
         break;
       }
-    case CME_FEEDBACK_PLUGIN_VIEWPORT :
+    case CME_FEEDBACK_PLUGIN_ADDED :
       {
 #ifdef SUPPORT_PLUGINS
-        unsigned long window =
-          clutter_mozembed_comms_receive_ulong (priv->input);
+        guint plug_id;
+        gint x, y, width, height;
 
-        if (priv->plugin_viewport != window)
-          {
-            priv->plugin_viewport = window;
-            clutter_mozembed_init_viewport (self);
-          }
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_UINT, &plug_id,
+                                        G_TYPE_INT, &x,
+                                        G_TYPE_INT, &y,
+                                        G_TYPE_INT, &width,
+                                        G_TYPE_INT, &height,
+                                        G_TYPE_INVALID);
+
+        clutter_mozembed_add_plugin (self, plug_id, x, y, width, height);
+#endif
+        break;
+      }
+    case CME_FEEDBACK_PLUGIN_UPDATED :
+      {
+#ifdef SUPPORT_PLUGINS
+        guint plug_id;
+        gint x, y, width, height;
+
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_UINT, &plug_id,
+                                        G_TYPE_INT, &x,
+                                        G_TYPE_INT, &y,
+                                        G_TYPE_INT, &width,
+                                        G_TYPE_INT, &height,
+                                        G_TYPE_INVALID);
+
+        clutter_mozembed_update_plugin_bounds (self, plug_id, x, y, width, height);
+#endif
+        break;
+      }
+    case CME_FEEDBACK_PLUGIN_VISIBILITY :
+      {
+#ifdef SUPPORT_PLUGINS
+        guint plug_id;
+        gboolean visible;
+
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_UINT, &plug_id,
+                                        G_TYPE_BOOLEAN, &visible,
+                                        G_TYPE_INVALID);
+
+        clutter_mozembed_update_plugin_visibility (self, plug_id, visible);
 #endif
         break;
       }
 #ifdef SUPPORT_IM
-    case CME_FEEDBACK_IM_RESET:
+    case CME_FEEDBACK_IM_RESET :
       {
         if (!priv->im_enabled)
           break;
@@ -645,13 +698,13 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
 
         break;
       }
-    case CME_FEEDBACK_IM_ENABLE:
+    case CME_FEEDBACK_IM_ENABLE :
       {
         priv->im_enabled = clutter_mozembed_comms_receive_boolean (priv->input);
 
         break;
       }
-    case CME_FEEDBACK_IM_FOCUS_CHANGE:
+    case CME_FEEDBACK_IM_FOCUS_CHANGE :
       {
         gboolean in = clutter_mozembed_comms_receive_boolean (priv->input);
 
@@ -665,7 +718,7 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
 
         break;
       }
-    case CME_FEEDBACK_IM_SET_CURSOR:
+    case CME_FEEDBACK_IM_SET_CURSOR :
       {
         ClutterIMRectangle rect;
 
@@ -675,6 +728,7 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
                                         G_TYPE_INT, &(rect.width),
                                         G_TYPE_INT, &(rect.height),
                                         G_TYPE_INVALID);
+
         if (!priv->im_enabled)
           break;
 
@@ -773,7 +827,7 @@ block_until_feedback (ClutterMozEmbed         *mozembed,
 #ifdef SUPPORT_PLUGINS
 static int
 error_handler (Display     *xdpy,
-	       XErrorEvent *error)
+               XErrorEvent *error)
 {
   trapped_x_error = error->error_code;
   return 0;
@@ -794,21 +848,14 @@ clutter_mozembed_untrap_x_errors (void)
 }
 
 static PluginWindow *
-find_plugin_window (GList *plugins, Window xwindow)
+find_plugin_window_by_socket_xwindow (GList *plugins, Window xwindow)
 {
   GList *pwin;
-  for (pwin = plugins; pwin != NULL; pwin = pwin->next)
+  for (pwin = plugins; pwin; pwin = pwin->next)
     {
       PluginWindow *plugin_window = pwin->data;
-      Window        plugin_xwindow;
-
-#ifndef DEBUG_PLUGIN_VIEWPORT
-      g_object_get (G_OBJECT (plugin_window->plugin_tfp),
-                    "window", &plugin_xwindow,
-                    NULL);
-#else
-      return plugin_window;
-#endif
+      Window        plugin_xwindow =
+        GDK_WINDOW_XWINDOW (gtk_widget_get_window (plugin_window->socket));
 
       if (plugin_xwindow == xwindow)
         return plugin_window;
@@ -816,6 +863,27 @@ find_plugin_window (GList *plugins, Window xwindow)
 
   return NULL;
 }
+
+static PluginWindow *
+find_plugin_window_by_plug_xwindow (GList *plugins, Window xwindow)
+{
+  GList *pwin;
+  for (pwin = plugins; pwin; pwin = pwin->next)
+    {
+      PluginWindow *plugin_window = pwin->data;
+      Window        plug_xwindow;
+      GdkWindow    *gdk_window;
+      gdk_window =
+        gtk_socket_get_plug_window (GTK_SOCKET (plugin_window->socket));
+      plug_xwindow = GDK_WINDOW_XWINDOW (gdk_window);
+
+      if (plug_xwindow  == xwindow)
+        return plugin_window;
+    }
+
+  return NULL;
+}
+
 
 static void
 clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
@@ -826,8 +894,9 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
   float                   abs_x, abs_y;
   gboolean                mapped;
   gboolean                reactive;
+  GdkWindow              *gdk_window;
 
-  if (!priv->plugin_viewport)
+  if (!priv->plugin_viewport_initialized)
     return;
 
   mapped = CLUTTER_ACTOR_IS_MAPPED (mozembed);
@@ -837,139 +906,34 @@ clutter_mozembed_sync_plugin_viewport_pos (ClutterMozEmbed *mozembed)
 
   clutter_mozembed_trap_x_errors ();
 
+  gdk_window = gtk_widget_get_window (priv->plugin_viewport);
+
   if (mapped && reactive)
     {
       clutter_actor_get_transformed_position (CLUTTER_ACTOR (mozembed),
                                               &abs_x, &abs_y);
 
-      XMoveWindow (xdpy, priv->plugin_viewport, (int)abs_x, (int)abs_y);
-
-      /* Note, we cover the entire area of the page with the plugin window,
-       * but plugins aren't clipped currently, so they can end up overlapping
-       * XUL scrollbars. This is a bug in the backend though.
-       */
-      if (geom.width > 0 && geom.height > 0)
-        {
-#ifndef DEBUG_PLUGIN_VIEWPORT
-          XResizeWindow (xdpy, priv->plugin_viewport,
-                         geom.width, geom.height);
-#else /* XXX: Handy when disabling redirection of the viewport
-         for debugging... */
-          XResizeWindow (xdpy, priv->plugin_viewport,
-                         geom.width - 200, geom.height - 200);
-#endif
-        }
+      gdk_window_raise (gdk_window);
+      /*
+      g_debug("clutter_mozembed_sync_plugin_viewport_pos %d %d %d %d\n",
+             (int)abs_x,
+             (int)abs_y,
+             (int)geom.width,
+             (int)geom.height);
+      */
+      gdk_window_move_resize (gdk_window,
+                              (int)abs_x, (int)abs_y,
+                              (int)geom.width, (int)geom.height);
     }
   else
     {
       /* Note we don't map/unmap the window since that would conflict with
        * xcomposite and live previews of plugins windows for hidden tabs */
-      XMoveWindow (xdpy, priv->plugin_viewport, -geom.width, 0);
+      gdk_window_move (gdk_window, (int)-geom.width, (int)0);
     }
 
   XSync (xdpy, False);
   clutter_mozembed_untrap_x_errors ();
-}
-
-static GdkFilterReturn
-plugin_viewport_x_event_filter (GdkXEvent *gdk_xevent,
-                                GdkEvent *event,
-                                gpointer data)
-{
-  ClutterMozEmbed        *mozembed = CLUTTER_MOZEMBED (data);
-  ClutterMozEmbedPrivate *priv = mozembed->priv;
-  XEvent                 *xev = (XEvent *)gdk_xevent;
-  Display                *xdpy = clutter_x11_get_default_display ();
-  PluginWindow           *plugin_window;
-  XWindowAttributes       attribs;
-  Window                  parent_win;
-  Window                  root_win;
-  Window                 *children;
-  unsigned int            n_children;
-  Status                  status;
-
-  switch (xev->type)
-    {
-    case MapNotify:
-
-      clutter_mozembed_trap_x_errors ();
-      status = XQueryTree (xdpy,
-                      xev->xmap.window,
-                      &root_win,
-                      &parent_win,
-                      &children,
-                      &n_children);
-      clutter_mozembed_untrap_x_errors ();
-      if (status == 0)
-        break;
-      XFree (children);
-
-      if (parent_win != priv->plugin_viewport)
-        break;
-
-      clutter_mozembed_trap_x_errors ();
-      status = XGetWindowAttributes (xdpy, xev->xmap.window, &attribs);
-      clutter_mozembed_untrap_x_errors ();
-      if (status == 0)
-        break;
-
-      plugin_window = g_slice_new (PluginWindow);
-      plugin_window->x = attribs.x;
-      plugin_window->y = attribs.y;
-#ifndef DEBUG_PLUGIN_VIEWPORT
-      plugin_window->plugin_tfp =
-        clutter_glx_texture_pixmap_new_with_window (xev->xmap.window);
-
-      clutter_x11_texture_pixmap_set_automatic (
-              CLUTTER_X11_TEXTURE_PIXMAP (plugin_window->plugin_tfp),
-              TRUE);
-
-      /* We don't want the parent (viewport) window to be automatically
-       * updated with changes to the plugin window... */
-      g_object_set (G_OBJECT (plugin_window->plugin_tfp),
-                    "window-redirect-automatic",
-                    FALSE,
-                    NULL);
-#else
-      plugin_window->plugin_tfp = clutter_rectangle_new ();
-      clutter_actor_set_size (plugin_window->plugin_tfp, 100, 100);
-#endif
-
-      clutter_actor_set_parent (plugin_window->plugin_tfp,
-                                CLUTTER_ACTOR (mozembed));
-
-      priv->plugin_windows =
-        g_list_prepend (priv->plugin_windows, plugin_window);
-      clutter_actor_queue_relayout (CLUTTER_ACTOR (mozembed));
-      break;
-
-    case UnmapNotify:
-      plugin_window =
-        find_plugin_window (priv->plugin_windows, xev->xunmap.window);
-      if (!plugin_window)
-        break;
-
-      priv->plugin_windows =
-        g_list_remove (priv->plugin_windows, plugin_window);
-      clutter_actor_unparent (plugin_window->plugin_tfp);
-      g_slice_free (PluginWindow, plugin_window);
-      break;
-
-    case ConfigureNotify:
-      plugin_window =
-        find_plugin_window (priv->plugin_windows, xev->xconfigure.window);
-      if (!plugin_window)
-        break;
-
-      plugin_window->x = xev->xconfigure.x;
-      plugin_window->y = xev->xconfigure.y;
-      
-      clutter_mozembed_sync_plugin_viewport_pos (mozembed);
-      clutter_mozembed_allocate_plugins (mozembed, FALSE);
-      break;
-    }
-
-  return  GDK_FILTER_CONTINUE;
 }
 
 static void
@@ -980,91 +944,345 @@ reactive_change_cb (GObject    *object,
   clutter_mozembed_sync_plugin_viewport_pos (CLUTTER_MOZEMBED (object));
 }
 
+static void
+plugin_socket_mapped (GtkSocket* socket_,
+                      GdkEvent*  event,
+                      gpointer   user_data)
+{
+  ClutterMozEmbed        *mozembed = CLUTTER_MOZEMBED (user_data);
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  PluginWindow           *plugin_window;
+  GdkWindow              *gdk_win;
+  Window                  socket_xwin;
+  GdkNativeWindow         plug_window;
+
+  gdk_win = gtk_widget_get_window (GTK_WIDGET (socket_));
+  socket_xwin = GDK_WINDOW_XWINDOW (gdk_win);
+  plugin_window =
+    find_plugin_window_by_socket_xwindow (priv->plugin_windows,
+                                          socket_xwin);
+  if (!plugin_window || plugin_window->plugin_tfp)
+    return;
+
+  plug_window = gtk_socket_get_id (socket_);
+  if (!plug_window)
+    {
+      priv->plugin_windows =
+        g_list_remove (priv->plugin_windows, plugin_window);
+      g_slice_free (PluginWindow, plugin_window);
+      return;
+    }
+
+  plugin_window->plugin_tfp =
+    clutter_glx_texture_pixmap_new_with_window (socket_xwin);
+
+  clutter_x11_texture_pixmap_set_automatic (
+    CLUTTER_X11_TEXTURE_PIXMAP (plugin_window->plugin_tfp),
+    TRUE);
+
+  /* We don't want the parent (viewport) window to be automatically
+   * updated with changes to the plugin window... */
+  g_object_set (G_OBJECT (plugin_window->plugin_tfp),
+                "window-redirect-automatic", FALSE,
+                NULL);
+  clutter_actor_set_parent (plugin_window->plugin_tfp,
+                            CLUTTER_ACTOR (mozembed));
+
+  clutter_actor_queue_relayout (CLUTTER_ACTOR (mozembed));
+}
+
+static gboolean
+plugin_socket_plug_removed (GtkSocket* socket_, gpointer user_data)
+{
+  ClutterMozEmbed        *mozembed = CLUTTER_MOZEMBED (user_data);
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  PluginWindow           *plugin_window;
+  GdkWindow              *gdk_win;
+  Window                  socket_xwin;
+
+  gdk_win = gtk_widget_get_window (GTK_WIDGET (socket_));
+  socket_xwin = GDK_WINDOW_XWINDOW (gdk_win);
+
+  plugin_window =
+    find_plugin_window_by_socket_xwindow (priv->plugin_windows,
+                                          socket_xwin);
+  if (!plugin_window)
+    return FALSE;
+
+  /* g_debug("plugin_socket_plug_removed %p %p\n", plugin_window->plug_id, socket_); */
+
+  priv->plugin_windows = g_list_remove (priv->plugin_windows, plugin_window);
+  clutter_actor_unparent (plugin_window->plugin_tfp);
+  clutter_actor_queue_relayout (CLUTTER_ACTOR (mozembed));
+  g_slice_free (PluginWindow, plugin_window);
+
+  /* by return FALSE, let GTK to destroy the socket */
+  return FALSE;
+}
+
+static void
+plugin_socket_size_allocated (GtkWidget     *socket_,
+                              GtkAllocation *allocation,
+                              gpointer       user_data)
+{
+  ClutterMozEmbed        *mozembed = CLUTTER_MOZEMBED (user_data);
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  PluginWindow           *plugin_window;
+  GdkWindow              *gdk_win;
+  Window                  socket_xwin;
+
+  gdk_win = gtk_widget_get_window (GTK_WIDGET (socket_));
+  socket_xwin = GDK_WINDOW_XWINDOW (gdk_win);
+
+  plugin_window =
+    find_plugin_window_by_socket_xwindow (priv->plugin_windows,
+                                          socket_xwin);
+
+  if (!plugin_window)
+    return;
+
+  clutter_mozembed_allocate_plugins (mozembed, FALSE);
+  return;
+}
+
+static void
+clutter_mozembed_add_plugin (ClutterMozEmbed *mozembed,
+                             guint            plug_id,
+                             gint             x,
+                             gint             y,
+                             gint             width,
+                             gint             height)
+{
+  PluginWindow* plugin_window;
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  clutter_mozembed_init_viewport (mozembed);
+  if (!priv->plugin_viewport_initialized)
+    return;
+
+  plugin_window = find_plugin_window_by_plug_xwindow (priv->plugin_windows,
+                                                      (Window)plug_id);
+
+  if (!plugin_window)
+    {
+      /*add a new plugin*/
+      plugin_window = g_slice_new (PluginWindow);
+      plugin_window->x = x;
+      plugin_window->y = y;
+      plugin_window->width = width;
+      plugin_window->height = height;
+      plugin_window->plugin_tfp = NULL;
+      plugin_window->plug_id = plug_id;
+
+      plugin_window->socket = gtk_socket_new ();
+      /*
+      g_debug("clutter_mozembed_add_plugin plug %p, socket %p\n",
+        plug_id, plugin_window->socket);
+      */
+      g_signal_connect (G_OBJECT (plugin_window->socket),
+                        "plug-removed",
+                        G_CALLBACK (plugin_socket_plug_removed),
+                        (gpointer)mozembed);
+      g_signal_connect (G_OBJECT (plugin_window->socket),
+                        "map-event",
+                        G_CALLBACK (plugin_socket_mapped),
+                        (gpointer)mozembed);
+      g_signal_connect (G_OBJECT (plugin_window->socket),
+                        "size-allocate",
+                        G_CALLBACK (plugin_socket_size_allocated),
+                        (gpointer)mozembed);
+
+      clutter_mozembed_plugin_container_put (
+        CLUTTER_MOZEMBED_PLUGIN_CONTAINER (priv->plugin_viewport),
+        plugin_window->socket,
+        x, y);
+      gtk_widget_realize (plugin_window->socket);
+
+      GtkAllocation allocation;
+      allocation.x = x;
+      allocation.y = y;
+      allocation.width = width;
+      allocation.height = height;
+      gtk_widget_size_allocate (plugin_window->socket, &allocation);
+
+      gtk_socket_add_id (GTK_SOCKET (plugin_window->socket),
+                         (GdkNativeWindow)plug_id);
+
+      /* to check if the plug window is removed before
+         'plug-removed' handler is instaled */
+      if (gtk_socket_get_plug_window (GTK_SOCKET (plugin_window->socket)))
+        {
+          gtk_widget_show (plugin_window->socket);
+
+          priv->plugin_windows =
+            g_list_prepend (priv->plugin_windows, plugin_window);
+
+          clutter_mozembed_sync_plugin_viewport_pos (mozembed);
+
+          g_signal_connect (G_OBJECT (mozembed),
+                            "notify::reactive",
+                            G_CALLBACK (reactive_change_cb),
+                            NULL);
+        }
+      else
+        {
+          g_warning ("plug window %u has been destroyed, removing socket %p\n",
+                     plug_id,
+                     plugin_window->socket);
+
+          gtk_container_remove (GTK_CONTAINER (priv->plugin_viewport),
+                                plugin_window->socket);
+          g_slice_free (PluginWindow, plugin_window);
+        }
+    }
+}
+
+static void
+clutter_mozembed_update_plugin_bounds (ClutterMozEmbed *mozembed,
+                                       guint            plug_id,
+                                       gint             x,
+                                       gint             y,
+                                       gint             width,
+                                       gint             height)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  PluginWindow* plugin_window;
+
+  if (!priv->plugin_viewport_initialized)
+    return;
+
+  plugin_window = find_plugin_window_by_plug_xwindow (priv->plugin_windows,
+                                                      (Window)plug_id);
+
+  if (plugin_window)
+    {
+      /*update plugin position and size*/
+      /*
+        g_debug("clutter_mozembed_update_plugin plug %p %d %d %d %d, socket %p\n",
+        plug_id, x, y, width, height, plugin_window->socket);
+      */
+
+      plugin_window->x = x;
+      plugin_window->y = y;
+      plugin_window->width = width;
+      plugin_window->height = height;
+
+      clutter_mozembed_plugin_container_move (
+        CLUTTER_MOZEMBED_PLUGIN_CONTAINER (priv->plugin_viewport),
+        plugin_window->socket,
+        x, y,
+        width, height);
+    }
+  else
+    {
+      g_warning ("clutter_mozembed_update_plugin_bounds plug %u is not added\n",
+                 plug_id);
+    }
+}
+
+static void
+clutter_mozembed_update_plugin_visibility (ClutterMozEmbed *mozembed,
+                                           guint            plug_id,
+                                           gboolean         visible)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  PluginWindow* plugin_window = NULL;
+
+  if (!priv->plugin_viewport_initialized)
+    return;
+
+  plugin_window = find_plugin_window_by_plug_xwindow (priv->plugin_windows,
+                                                      (Window)plug_id);
+
+  if (plugin_window)
+    {
+      if (visible)
+        {
+          gdk_window_show (gtk_widget_get_window (plugin_window->socket));
+          if (plugin_window->plugin_tfp)
+            clutter_actor_show (plugin_window->plugin_tfp);
+          clutter_mozembed_sync_plugin_viewport_pos (mozembed);
+        }
+      else
+        {
+          gdk_window_hide (gtk_widget_get_window (plugin_window->socket));
+          if (plugin_window->plugin_tfp)
+            clutter_actor_hide (plugin_window->plugin_tfp);
+          clutter_mozembed_sync_plugin_viewport_pos (mozembed);
+        }
+    }
+  else
+    {
+      g_warning ("clutter_mozembed_update_plugin_visibility plug %u "
+                 "is not added\n", plug_id);
+    }
+
+}
+
+static void
+plugin_viewport_size_allocated (GtkWidget     *viewport,
+                                GtkAllocation *allocation,
+                                gpointer       user_data)
+{
+  ClutterMozEmbed        *mozembed = CLUTTER_MOZEMBED (user_data);
+
+  clutter_mozembed_sync_plugin_viewport_pos (CLUTTER_MOZEMBED (mozembed));
+
+  return;
+}
+
 static gboolean
 clutter_mozembed_init_viewport (ClutterMozEmbed *mozembed)
 {
+  int composite_major, composite_minor;
+  GdkWindow *gdk_window;
+  ClutterActor *stage;
+
   ClutterMozEmbedPrivate *priv = mozembed->priv;
   Display *xdpy = clutter_x11_get_default_display ();
-  ClutterActor *stage;
-  //unsigned long pixel;
-  int composite_major, composite_minor;
 
-  if (priv->plugin_viewport_initialized)
-    return TRUE;
-
-  if (!priv->plugin_viewport)
-    return FALSE;
-
-  if (priv->read_only)
-    return FALSE;
-
-#ifdef DEBUG_PLUGIN_VIEWPORT
-  XSynchronize (xdpy, True);
-#endif
-
-  stage = clutter_actor_get_stage (CLUTTER_ACTOR (mozembed));
-  if (!stage || !CLUTTER_ACTOR_IS_REALIZED (stage))
-    return FALSE;
-
-  priv->stage_xwin = clutter_x11_get_stage_window (CLUTTER_STAGE (stage));
-  if ((priv->stage_xwin == None) ||
-      (priv->stage_xwin == clutter_x11_get_root_window()))
-    return FALSE;
-
-  priv->stage_gdk_window = gdk_window_foreign_new (priv->stage_xwin);
-  if (!priv->stage_gdk_window)
-    return FALSE;
-
-  /* Initially the plugin viewport window will be parented on the root window,
-   * so we need to reparent it onto the stage so that we can align the plugin
-   * X windows with the corresponding ClutterGLXTexturePixmap actors. */
-  XReparentWindow (xdpy, priv->plugin_viewport, priv->stage_xwin, -100, -100);
-
-  /* Note, unlike the individual plugin windows which we redirect using clutter,
-   * we redirect the viewport window directly since we want to be sure we never
-   * name a pixmap for it. NB: The viewport window is only needed for input
-   * clipping.
-   */
-  if (XCompositeQueryVersion (xdpy, &composite_major, &composite_minor)
-      != True)
+  if(priv->plugin_viewport_initialized == FALSE)
     {
-      g_critical ("The composite extension is required for redirecting "
-                  "plugin windows");
+      stage = clutter_actor_get_stage (CLUTTER_ACTOR (mozembed));
+
+      if (!priv->layout_container)
+        {
+          g_warning ("No plugin container has been set.");
+          return FALSE;
+        }
+
+      if (!XCompositeQueryVersion (xdpy, &composite_major, &composite_minor))
+        {
+          g_warning ("The composite extension is required for redirecting "
+                     "plugin windows");
+          return FALSE;
+        }
+
+      priv->plugin_viewport =
+        clutter_mozembed_plugin_container_new_for_stage (stage);
+      gtk_container_add (GTK_CONTAINER (priv->layout_container),
+                         priv->plugin_viewport);
+
+      gdk_window = gtk_widget_get_window (priv->plugin_viewport);
+      /* Using XCompositeRedirectWindow instead of gdk_window_set_composited
+       * fails on GTK+ >= 2.18
+       */
+      /*XCompositeRedirectWindow (xdpy,
+                                GDK_WINDOW_XWINDOW (gdk_window),
+                                CompositeRedirectManual);*/
+      gdk_window_set_composited (gdk_window, TRUE);
+
+      gtk_widget_show (priv->plugin_viewport);
+
+      g_signal_connect (G_OBJECT (priv->plugin_viewport),
+                        "size-allocate",
+                        G_CALLBACK (plugin_viewport_size_allocated),
+                        (gpointer)mozembed);
+
+      XSync (xdpy, False);
+
+      priv->plugin_viewport_initialized = TRUE;
     }
-#ifndef DEBUG_PLUGIN_VIEWPORT
-  XCompositeRedirectWindow (xdpy,
-                            priv->plugin_viewport,
-                            CompositeRedirectManual);
-#endif
-  XSelectInput (xdpy, priv->plugin_viewport,
-                SubstructureNotifyMask);
-
-  gdk_window_add_filter (NULL,
-                         plugin_viewport_x_event_filter,
-                         (gpointer)mozembed);
-
-  /* We aim to close down gracefully, but if we fail to do so we must at
-   * least ensure that we don't destroy the plugin_viewport window since
-   * that would most likely cause the backend moz-headless process to crash.
-   */
-  XAddToSaveSet (xdpy, priv->plugin_viewport);
-
-  XMapWindow (xdpy, priv->plugin_viewport);
-
-  /* Make sure the window is mapped, or we can end up with unparented
-   * plugin windows
-   */
-  XSync (xdpy, False);
-
-  clutter_mozembed_sync_plugin_viewport_pos (mozembed);
-
-  g_signal_connect (G_OBJECT (mozembed),
-                    "notify::reactive",
-                    G_CALLBACK (reactive_change_cb),
-                    NULL);
-
-  priv->plugin_viewport_initialized = TRUE;
-
   return TRUE;
 }
 
@@ -1080,7 +1298,8 @@ clutter_mozembed_unmap (ClutterActor *actor)
   for (p = priv->plugin_windows; p; p = p->next)
     {
       PluginWindow *window = p->data;
-      clutter_actor_unmap (window->plugin_tfp);
+      if (window->plugin_tfp)
+        clutter_actor_unmap (window->plugin_tfp);
     }
 }
 
@@ -1093,12 +1312,11 @@ clutter_mozembed_map (ClutterActor *actor)
 
   CLUTTER_ACTOR_CLASS (clutter_mozembed_parent_class)->map (actor);
 
-  clutter_mozembed_init_viewport (mozembed);
-
   for (p = priv->plugin_windows; p; p = p->next)
     {
       PluginWindow *window = p->data;
-      clutter_actor_map (window->plugin_tfp);
+      if (window->plugin_tfp)
+        clutter_actor_map (window->plugin_tfp);
     }
 
   clutter_mozembed_sync_plugin_viewport_pos (CLUTTER_MOZEMBED (actor));
@@ -1110,7 +1328,7 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
                               GValue *value, GParamSpec *pspec)
 {
   ClutterMozEmbed *self = CLUTTER_MOZEMBED (object);
-  
+
   switch (property_id) {
   case PROP_LOCATION :
     g_value_set_string (value, clutter_mozembed_get_location (self));
@@ -1342,13 +1560,13 @@ clutter_mozembed_dispose (GObject *object)
 {
   ClutterMozEmbed *self = CLUTTER_MOZEMBED (object);
   ClutterMozEmbedPrivate *priv = self->priv;
-#ifdef SUPPORT_PLUGINS
-  Display                *xdpy = clutter_x11_get_default_display ();
 
+#ifdef SUPPORT_PLUGINS
   while (priv->plugin_windows)
     {
       PluginWindow *plugin_window = priv->plugin_windows->data;
-      clutter_actor_unparent (plugin_window->plugin_tfp);
+      if (plugin_window->plugin_tfp)
+        clutter_actor_unparent (plugin_window->plugin_tfp);
       g_slice_free (PluginWindow, plugin_window);
       priv->plugin_windows = g_list_delete_link (priv->plugin_windows,
                                                  priv->plugin_windows);
@@ -1356,34 +1574,10 @@ clutter_mozembed_dispose (GObject *object)
 
   if (priv->plugin_viewport_initialized)
     {
-      XWindowAttributes  attribs;
-      int width = 1000;
-      int height = 1000;
+      gtk_widget_hide (priv->plugin_viewport);
+      gtk_widget_destroy (priv->plugin_viewport);
 
-      gdk_window_remove_filter (NULL,
-                                plugin_viewport_x_event_filter,
-                                (gpointer)object);
-
-      clutter_mozembed_trap_x_errors ();
-
-      if (XGetWindowAttributes (xdpy, priv->plugin_viewport, &attribs) != 0)
-        {
-          width = attribs.width;
-          height = attribs.height;
-        }
-
-      XSync (xdpy, False);
-
-      XUnmapWindow (xdpy, priv->plugin_viewport);
-      XReparentWindow (xdpy,
-                       priv->plugin_viewport,
-                       XDefaultRootWindow (xdpy),
-                       -width,
-                       -height);
-      XRemoveFromSaveSet (xdpy, priv->plugin_viewport);
-      XSync (xdpy, False);
-      clutter_mozembed_untrap_x_errors ();
-
+      priv->plugin_viewport = NULL;
       priv->plugin_viewport_initialized = FALSE;
     }
 #endif
@@ -1490,16 +1684,19 @@ clutter_mozembed_allocate_plugins (ClutterMozEmbed        *mozembed,
        * If the tfp actor hasn't yet renamed the pixmap for the redirected
        * window since it was last resized, then I guess it will look better if
        * we avoid scaling whatever pixmap we currently have. */
-      clutter_actor_get_preferred_size (plugin_tfp,
-                                        NULL, NULL,
-                                        &natural_width, &natural_height);
+      if(plugin_tfp)
+        {
+          clutter_actor_get_preferred_size (plugin_tfp,
+                                            NULL, NULL,
+                                            &natural_width, &natural_height);
 
-      child_box.x1 = plugin_window->x;
-      child_box.y1 = plugin_window->y;
-      child_box.x2 = plugin_window->x + natural_width;
-      child_box.y2 = plugin_window->y + natural_height;
+          child_box.x1 = plugin_window->x;
+          child_box.y1 = plugin_window->y;
+          child_box.x2 = plugin_window->x + natural_width;
+          child_box.y2 = plugin_window->y + natural_height;
 
-      clutter_actor_allocate (plugin_window->plugin_tfp, &child_box, flags);
+          clutter_actor_allocate (plugin_window->plugin_tfp, &child_box, flags);
+        }
     }
 }
 #endif
@@ -1666,7 +1863,7 @@ clutter_mozembed_paint (ClutterActor *actor)
       PluginWindow *plugin_window = pwin->data;
       ClutterActor *plugin_tfp = CLUTTER_ACTOR (plugin_window->plugin_tfp);
 
-      if (CLUTTER_ACTOR_IS_MAPPED (plugin_tfp))
+      if (plugin_tfp && CLUTTER_ACTOR_IS_MAPPED (plugin_tfp))
         clutter_actor_paint (plugin_tfp);
     }
   cogl_clip_pop ();
@@ -2545,7 +2742,7 @@ static void
 clutter_mozembed_size_change (ClutterTexture *texture, gint width, gint height)
 {
   ClutterMozEmbedPrivate *priv = CLUTTER_MOZEMBED (texture)->priv;
-  
+
   if (priv->read_only)
     clutter_actor_queue_relayout (CLUTTER_ACTOR (texture));
 }
@@ -3037,6 +3234,7 @@ clutter_mozembed_imcontext_preedit_changed_cb (ClutterIMContext *context,
 static void
 clutter_mozembed_init (ClutterMozEmbed *self)
 {
+
   ClutterMozEmbedPrivate *priv = self->priv = MOZEMBED_PRIVATE (self);
 
   priv->motion_ack = TRUE;
@@ -3068,6 +3266,10 @@ clutter_mozembed_init (ClutterMozEmbed *self)
                     G_CALLBACK (clutter_mozembed_imcontext_preedit_changed_cb),
                     self);
 #endif
+  priv->plugin_windows = NULL;
+  priv->plugin_viewport = NULL;
+  priv->layout_container = NULL;
+  priv->plugin_viewport_initialized = FALSE;
 }
 
 ClutterActor *
@@ -3358,3 +3560,48 @@ clutter_mozembed_get_private (ClutterMozEmbed *mozembed)
   return mozembed->priv->private;
 }
 
+void
+clutter_mozembed_lower (ClutterMozEmbed *mozembed)
+{
+#ifdef SUPPORT_PLUGINS
+  /* we don't know whether this mozembed is obscured by
+     others. If it is, the plugin_viewport window need to
+     be lowered. */
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  GdkWindow              *gdk_window;
+
+  if (!priv->plugin_viewport_initialized)
+    return;
+
+  gdk_window = gtk_widget_get_window (priv->plugin_viewport);
+
+  gdk_window_lower (gdk_window);
+#endif
+}
+
+void
+clutter_mozembed_raise (ClutterMozEmbed *mozembed)
+{
+#ifdef SUPPORT_PLUGINS
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+  GdkWindow              *gdk_window;
+
+  if(!priv->plugin_viewport_initialized)
+    return;
+
+  gdk_window = gtk_widget_get_window(priv->plugin_viewport);
+
+  gdk_window_raise (gdk_window);
+#endif
+}
+
+void
+clutter_mozembed_set_layout_container (ClutterMozEmbed *mozembed,
+                                       GtkWidget       *container)
+{
+#ifdef SUPPORT_PLUGINS
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  priv->layout_container = container;
+#endif
+}

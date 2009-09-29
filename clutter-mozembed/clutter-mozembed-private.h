@@ -30,6 +30,7 @@
 #include <clutter/x11/clutter-x11.h>
 #include <clutter/glx/clutter-glx.h>
 #include <gdk/gdkx.h>
+#include <gtk/gtk.h>
 #endif
 
 #include "clutter-mozembed.h"
@@ -115,21 +116,19 @@ struct _ClutterMozEmbedPrivate
 #ifdef SUPPORT_PLUGINS
   Window           stage_xwin;
   GdkWindow       *stage_gdk_window;
-
-  /* The toplevel window owned by the moz-headless process that
-   * parents all the plugin windows. */
-  Window           plugin_viewport;
+  GtkWidget*       plugin_viewport;
+  GtkWidget*       layout_container;
   gboolean         plugin_viewport_initialized;
 
   GList           *plugin_windows;
 #endif
 
   MozHeadlessCursorType cursor;
-    
+
 #ifdef SUPPORT_IM
     ClutterIMContext *im_context;
     gboolean im_enabled;
-#endif    
+#endif
 };
 
 ClutterMozEmbedDownload *clutter_mozembed_download_new (ClutterMozEmbed *parent,

@@ -21,6 +21,7 @@
 #ifndef _CLUTTER_MOZEMBED
 #define _CLUTTER_MOZEMBED
 
+#include <gtk/gtk.h>
 #include <glib-object.h>
 #include <clutter/clutter.h>
 #include <moz-headless.h>
@@ -132,6 +133,11 @@ gdouble clutter_mozembed_get_progress (ClutterMozEmbed *mozembed);
 guint clutter_mozembed_get_security (ClutterMozEmbed *mozembed);
 
 MozHeadlessCursorType clutter_mozembed_get_cursor (ClutterMozEmbed *mozembed);
+
+void clutter_mozembed_lower (ClutterMozEmbed *mozembed);
+void clutter_mozembed_raise (ClutterMozEmbed *mozembed);
+
+void clutter_mozembed_set_layout_container (ClutterMozEmbed *mozembed, GtkWidget* container);
 
 G_END_DECLS
 

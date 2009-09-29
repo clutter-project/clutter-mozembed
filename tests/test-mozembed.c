@@ -94,7 +94,9 @@ close_cb (ClutterMozEmbed *mozembed,
 }
 
 static void
-new_window_cb (ClutterMozEmbed *mozembed, ClutterActor *new_mozembed)
+new_window_cb (ClutterMozEmbed  *mozembed,
+               ClutterActor    **new_mozembed,
+               guint             chromeflags)
 {
   ClutterTimeline *timeline;
   ClutterBehaviour *z_rot;
@@ -102,14 +104,16 @@ new_window_cb (ClutterMozEmbed *mozembed, ClutterActor *new_mozembed)
 
   stage = clutter_stage_new ();
 
+  *new_mozembed = clutter_mozembed_new_for_new_window ();
+
   clutter_actor_set_size (stage, 640, 480);
-  clutter_container_add_actor (CLUTTER_CONTAINER (stage), new_mozembed);
-  clutter_actor_set_size (new_mozembed, 640, 480);
-  g_signal_connect (new_mozembed, "size-request",
+  clutter_container_add_actor (CLUTTER_CONTAINER (stage), *new_mozembed);
+  clutter_actor_set_size (*new_mozembed, 640, 480);
+  g_signal_connect (*new_mozembed, "size-request",
                     G_CALLBACK (size_request_cb), stage);
-  g_signal_connect (new_mozembed, "closed",
+  g_signal_connect (*new_mozembed, "closed",
                     G_CALLBACK (close_cb), stage);
-  g_signal_connect (new_mozembed, "download",
+  g_signal_connect (*new_mozembed, "download",
                     G_CALLBACK (download_cb), NULL);
 
   timeline = clutter_timeline_new (8000);
@@ -122,12 +126,12 @@ new_window_cb (ClutterMozEmbed *mozembed, ClutterActor *new_mozembed)
                                   360);
   clutter_behaviour_rotate_set_center (CLUTTER_BEHAVIOUR_ROTATE (z_rot),
                                        320, 240, 0);
-  clutter_behaviour_apply (z_rot, new_mozembed);
+  clutter_behaviour_apply (z_rot, *new_mozembed);
   clutter_timeline_set_loop (timeline, TRUE);
   //clutter_timeline_start (timeline);
 
   clutter_actor_show (stage);
-  clutter_stage_set_key_focus (CLUTTER_STAGE (stage), new_mozembed);
+  clutter_stage_set_key_focus (CLUTTER_STAGE (stage), *new_mozembed);
 }
 
 int

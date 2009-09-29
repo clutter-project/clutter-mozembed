@@ -521,6 +521,55 @@ im_set_cursor_cb (ClutterMozHeadless *self,
 }
 #endif
 
+#ifdef SUPPORT_PLUGINS
+static void
+plugin_added_cb (ClutterMozHeadless *self,
+                 guint plug_id,
+                 gint x,
+                 gint y,
+                 gint width,
+                 gint height)
+
+{
+  send_feedback_all (self, CME_FEEDBACK_PLUGIN_ADDED,
+                     G_TYPE_UINT, plug_id,
+                     G_TYPE_INT, x,
+                     G_TYPE_INT, y,
+                     G_TYPE_INT, width,
+                     G_TYPE_INT, height,
+                     G_TYPE_INVALID);
+}
+
+static void
+plugin_updated_cb (ClutterMozHeadless *self,
+                   guint plug_id,
+                   gint x,
+                   gint y,
+                   gint width,
+                   gint height)
+{
+  send_feedback_all (self, CME_FEEDBACK_PLUGIN_UPDATED,
+                     G_TYPE_UINT, plug_id,
+                     G_TYPE_INT, x,
+                     G_TYPE_INT, y,
+                     G_TYPE_INT, width,
+                     G_TYPE_INT, height,
+                     G_TYPE_INVALID);
+}
+
+static void
+plugin_visibility_cb (ClutterMozHeadless *self,
+                      guint plug_id,
+                      gboolean visible)
+{
+  send_feedback_all (self, CME_FEEDBACK_PLUGIN_VISIBILITY,
+                     G_TYPE_UINT, plug_id,
+                     G_TYPE_BOOLEAN, visible,
+                     G_TYPE_INVALID);
+}
+
+#endif
+
 static void
 clutter_mozheadless_create_view (ClutterMozHeadless *self,
                                  gchar              *input_file,
@@ -1266,9 +1315,6 @@ clutter_mozheadless_constructed (GObject *object)
 {
   ClutterMozHeadless *self = CLUTTER_MOZHEADLESS (object);
   ClutterMozHeadlessPrivate *priv = self->priv;
-#ifdef SUPPORT_PLUGINS
-  GdkWindow *plugin_viewport;
-#endif
 
   if (G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed)
     G_OBJECT_CLASS (clutter_mozheadless_parent_class)->constructed (object);
@@ -1332,11 +1378,12 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (im_set_cursor_cb), NULL);
 #endif
 #ifdef SUPPORT_PLUGINS
-  plugin_viewport = moz_headless_get_plugin_window (MOZ_HEADLESS (self));
-  send_feedback_all (self, CME_FEEDBACK_PLUGIN_VIEWPORT,
-                     G_TYPE_ULONG,
-                     (unsigned long)GDK_WINDOW_XID (plugin_viewport),
-                     G_TYPE_INVALID);
+  g_signal_connect (object, "plugin-added",
+                    G_CALLBACK (plugin_added_cb), NULL);
+  g_signal_connect (object, "plugin-updated",
+                    G_CALLBACK (plugin_updated_cb), NULL);
+  g_signal_connect (object, "plugin-visibility",
+                    G_CALLBACK (plugin_visibility_cb), NULL);
 #endif
 
   spawned_heads ++;
