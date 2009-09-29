@@ -242,6 +242,12 @@ updated_cb (MozHeadless        *headless,
 
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (headless)->priv;
 
+  /* If we're pending a resize, the surface width/height will be incorrect
+   * and we could cause a crash in the embedder.
+   */
+  if (priv->pending_resize)
+    return;
+
   /*g_debug ("Update +%d+%d %dx%d", x, y, width, height);*/
 
   msync (priv->mmap_start, priv->mmap_length, MS_SYNC);
