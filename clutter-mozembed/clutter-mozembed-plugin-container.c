@@ -65,6 +65,32 @@ G_DEFINE_TYPE (ClutterMozembedPluginContainer,
                clutter_mozembed_plugin_container,
                GTK_TYPE_CONTAINER)
 
+#if !GTK_CHECK_VERSION(2,18,0)
+
+/* These functions were defined in GTK+ 2.18 to replace direct member
+   access. We can resort back to direct access if they are not
+   available */
+
+static void
+gtk_widget_set_window (GtkWidget *widget, GdkWindow *window)
+{
+  widget->window = window;
+}
+
+static void
+gtk_widget_set_allocation (GtkWidget *widget, const GtkAllocation *allocation)
+{
+  widget->allocation = *allocation;
+}
+
+static void
+gtk_widget_get_allocation (GtkWidget *widget, GtkAllocation *allocation)
+{
+  *allocation = widget->allocation;
+}
+
+#endif /* !GTK_CHECK_VERSION(2,18,0) */
+
 GtkWidget *
 clutter_mozembed_plugin_container_new (void)
 {
