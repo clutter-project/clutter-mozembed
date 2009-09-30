@@ -1891,6 +1891,7 @@ clutter_mozembed_get_modifier (ClutterModifierType modifiers)
   mozifiers |= (modifiers & CLUTTER_CONTROL_MASK) ? MOZ_KEY_CONTROL_MASK : 0;
   mozifiers |= (modifiers & CLUTTER_MOD1_MASK) ? MOZ_KEY_ALT_MASK : 0;
   mozifiers |= (modifiers & CLUTTER_META_MASK) ? MOZ_KEY_META_MASK : 0;
+  mozifiers |= (modifiers & CLUTTER_LOCK_MASK) ? MOZ_KEY_LOCK_MASK : 0;
 
   return mozifiers;
 }
@@ -2009,331 +2010,170 @@ clutter_mozembed_button_release_event (ClutterActor *actor,
   return TRUE;
 }
 
+struct mozKeyConverter {
+    int vkCode; /* Platform independent key code */
+    int keysym; /* CLUTTER keysym key code */
+};
+
+struct mozKeyConverter mozKeycodes[] = {
+    { MOZ_KEY_CANCEL,     CLUTTER_Cancel },
+    { MOZ_KEY_BACK_SPACE, CLUTTER_BackSpace },
+    { MOZ_KEY_TAB,        CLUTTER_Tab },
+    { MOZ_KEY_TAB,        CLUTTER_ISO_Left_Tab },
+    { MOZ_KEY_CLEAR,      CLUTTER_Clear },
+    { MOZ_KEY_RETURN,     CLUTTER_Return },
+    { MOZ_KEY_SHIFT,      CLUTTER_Shift_L },
+    { MOZ_KEY_SHIFT,      CLUTTER_Shift_R },
+    { MOZ_KEY_CONTROL,    CLUTTER_Control_L },
+    { MOZ_KEY_CONTROL,    CLUTTER_Control_R },
+    { MOZ_KEY_ALT,        CLUTTER_Alt_L },
+    { MOZ_KEY_ALT,        CLUTTER_Alt_R },
+    { MOZ_KEY_META,       CLUTTER_Meta_L },
+    { MOZ_KEY_META,       CLUTTER_Meta_R },
+    { MOZ_KEY_PAUSE,      CLUTTER_Pause },
+    { MOZ_KEY_CAPS_LOCK,  CLUTTER_Caps_Lock },
+    { MOZ_KEY_ESCAPE,     CLUTTER_Escape },
+    { MOZ_KEY_SPACE,      CLUTTER_space },
+    { MOZ_KEY_PAGE_UP,    CLUTTER_Page_Up },
+    { MOZ_KEY_PAGE_DOWN,  CLUTTER_Page_Down },
+    { MOZ_KEY_END,        CLUTTER_End },
+    { MOZ_KEY_HOME,       CLUTTER_Home },
+    { MOZ_KEY_LEFT,       CLUTTER_Left },
+    { MOZ_KEY_UP,         CLUTTER_Up },
+    { MOZ_KEY_RIGHT,      CLUTTER_Right },
+    { MOZ_KEY_DOWN,       CLUTTER_Down },
+    { MOZ_KEY_PRINTSCREEN, CLUTTER_Print },
+    { MOZ_KEY_INSERT,     CLUTTER_Insert },
+    { MOZ_KEY_DELETE,     CLUTTER_Delete },
+
+    /* keypad keys */
+    { MOZ_KEY_LEFT,       CLUTTER_KP_Left },
+    { MOZ_KEY_RIGHT,      CLUTTER_KP_Right },
+    { MOZ_KEY_UP,         CLUTTER_KP_Up },
+    { MOZ_KEY_DOWN,       CLUTTER_KP_Down },
+    { MOZ_KEY_PAGE_UP,    CLUTTER_KP_Page_Up },
+    /* Not sure what these are */
+    /*{ MOZ_KEY_,       CLUTTER_KP_Prior },
+    { MOZ_KEY_,        CLUTTER_KP_Next },
+     CLUTTER_KP_Begin is the 5 on the non-numlock keypad
+    { MOZ_KEY_,        CLUTTER_KP_Begin },*/
+    { MOZ_KEY_PAGE_DOWN,  CLUTTER_KP_Page_Down },
+    { MOZ_KEY_HOME,       CLUTTER_KP_Home },
+    { MOZ_KEY_END,        CLUTTER_KP_End },
+    { MOZ_KEY_INSERT,     CLUTTER_KP_Insert },
+    { MOZ_KEY_DELETE,     CLUTTER_KP_Delete },
+
+    { MOZ_KEY_MULTIPLY,   CLUTTER_KP_Multiply },
+    { MOZ_KEY_ADD,        CLUTTER_KP_Add },
+    { MOZ_KEY_SEPARATOR,  CLUTTER_KP_Separator },
+    { MOZ_KEY_SUBTRACT,   CLUTTER_KP_Subtract },
+    { MOZ_KEY_DECIMAL,    CLUTTER_KP_Decimal },
+    { MOZ_KEY_DIVIDE,     CLUTTER_KP_Divide },
+    { MOZ_KEY_RETURN,     CLUTTER_KP_Enter },
+    { MOZ_KEY_NUM_LOCK,   CLUTTER_Num_Lock },
+    { MOZ_KEY_SCROLL_LOCK,CLUTTER_Scroll_Lock },
+
+    { MOZ_KEY_COMMA,      CLUTTER_comma },
+    { MOZ_KEY_PERIOD,     CLUTTER_period },
+    { MOZ_KEY_SLASH,      CLUTTER_slash },
+    { MOZ_KEY_BACK_SLASH, CLUTTER_backslash },
+    { MOZ_KEY_BACK_QUOTE, CLUTTER_grave },
+    { MOZ_KEY_OPEN_BRACKET, CLUTTER_bracketleft },
+    { MOZ_KEY_CLOSE_BRACKET, CLUTTER_bracketright },
+    { MOZ_KEY_SEMICOLON, CLUTTER_colon },
+    { MOZ_KEY_QUOTE, CLUTTER_apostrophe },
+
+    /* context menu key, keysym 0xff67, typically keycode 117 on 105-key
+     * (Microsoft) x86 keyboards, located between right 'Windows' key and
+     * right Ctrl key */
+    { MOZ_KEY_CONTEXT_MENU, CLUTTER_Menu },
+
+    /* NS doesn't have dash or equals distinct from the numeric keypad ones,
+     * so we'll use those for now.  See bug 17008: */
+    { MOZ_KEY_SUBTRACT, CLUTTER_minus },
+    { MOZ_KEY_EQUALS, CLUTTER_equal },
+
+    /* Some shifted keys, see bug 15463 as well as 17008.
+     * These should be subject to different keyboard mappings. */
+    { MOZ_KEY_QUOTE, CLUTTER_quotedbl },
+    { MOZ_KEY_OPEN_BRACKET, CLUTTER_braceleft },
+    { MOZ_KEY_CLOSE_BRACKET, CLUTTER_braceright },
+    { MOZ_KEY_BACK_SLASH, CLUTTER_bar },
+    { MOZ_KEY_SEMICOLON, CLUTTER_semicolon },
+    { MOZ_KEY_BACK_QUOTE, CLUTTER_asciitilde },
+    { MOZ_KEY_COMMA, CLUTTER_less },
+    { MOZ_KEY_PERIOD, CLUTTER_greater },
+    { MOZ_KEY_SLASH,      CLUTTER_question },
+    { MOZ_KEY_1, CLUTTER_exclam },
+    { MOZ_KEY_2, CLUTTER_at },
+    { MOZ_KEY_3, CLUTTER_numbersign },
+    { MOZ_KEY_4, CLUTTER_dollar },
+    { MOZ_KEY_5, CLUTTER_percent },
+    { MOZ_KEY_6, CLUTTER_asciicircum },
+    { MOZ_KEY_7, CLUTTER_ampersand },
+    { MOZ_KEY_8, CLUTTER_asterisk },
+    { MOZ_KEY_9, CLUTTER_parenleft },
+    { MOZ_KEY_0, CLUTTER_parenright },
+    { MOZ_KEY_SUBTRACT, CLUTTER_underscore },
+    { MOZ_KEY_EQUALS, CLUTTER_plus }
+};
+
 static gboolean
 clutter_mozembed_get_keyval (ClutterKeyEvent *event, guint *keyval)
 {
-  switch (event->keyval)
+  int i, length = 0;
+
+  /* letters*/
+  if (event->keyval >= CLUTTER_a && event->keyval <= CLUTTER_z)
     {
-    case CLUTTER_Cancel :
-      *keyval = MOZ_KEY_CANCEL;
-      return TRUE;
-    case CLUTTER_Help :
-      *keyval = MOZ_KEY_HELP;
-      return TRUE;
-    case CLUTTER_BackSpace :
-      *keyval = MOZ_KEY_BACK_SPACE;
-      return TRUE;
-    case CLUTTER_Tab :
-    case CLUTTER_ISO_Left_Tab :
-      *keyval = MOZ_KEY_TAB;
-      return TRUE;
-    case CLUTTER_Return :
-      *keyval = MOZ_KEY_RETURN;
-      return TRUE;
-    case CLUTTER_KP_Enter :
-      *keyval = MOZ_KEY_ENTER;
-      return TRUE;
-    case CLUTTER_Shift_L :
-    case CLUTTER_Shift_R :
-      *keyval = MOZ_KEY_SHIFT;
-      return TRUE;
-    case CLUTTER_Control_L :
-    case CLUTTER_Control_R :
-      *keyval = MOZ_KEY_CONTROL;
-      return TRUE;
-    case CLUTTER_Alt_L :
-    case CLUTTER_Alt_R :
-      *keyval = MOZ_KEY_ALT;
-      return TRUE;
-    case CLUTTER_Pause :
-      *keyval = MOZ_KEY_PAUSE;
-      return TRUE;
-    case CLUTTER_Caps_Lock :
-      *keyval = MOZ_KEY_CAPS_LOCK;
-      return TRUE;
-    case CLUTTER_Escape :
-      *keyval = MOZ_KEY_ESCAPE;
-      return TRUE;
-    case CLUTTER_space :
-      *keyval = MOZ_KEY_SPACE;
-      return TRUE;
-    case CLUTTER_Page_Up :
-      *keyval = MOZ_KEY_PAGE_UP;
-      return TRUE;
-    case CLUTTER_Page_Down :
-      *keyval = MOZ_KEY_PAGE_DOWN;
-      return TRUE;
-    case CLUTTER_End :
-      *keyval = MOZ_KEY_END;
-      return TRUE;
-    case CLUTTER_Home :
-      *keyval = MOZ_KEY_HOME;
-      return TRUE;
-    case CLUTTER_Left:
-      *keyval = MOZ_KEY_LEFT;
-      return TRUE;
-    case CLUTTER_Up:
-      *keyval = MOZ_KEY_UP;
-      return TRUE;
-    case CLUTTER_Right:
-      *keyval = MOZ_KEY_RIGHT;
-      return TRUE;
-    case CLUTTER_Down:
-      *keyval = MOZ_KEY_DOWN;
-      return TRUE;
-    case CLUTTER_Print:
-      *keyval = MOZ_KEY_PRINTSCREEN;
-      return TRUE;
-    case CLUTTER_Insert:
-      *keyval = MOZ_KEY_INSERT;
-      return TRUE;
-    case CLUTTER_Delete:
-      *keyval = MOZ_KEY_DELETE;
-      return TRUE;
-    case CLUTTER_semicolon:
-      *keyval = MOZ_KEY_SEMICOLON;
-      return TRUE;
-    case CLUTTER_equal:
-      *keyval = MOZ_KEY_EQUALS;
-      return TRUE;
-    case CLUTTER_Menu:
-      *keyval = MOZ_KEY_CONTEXT_MENU;
-      return TRUE;
-    case CLUTTER_KP_0:
-      *keyval = MOZ_KEY_NUMPAD0;
-      return TRUE;
-    case CLUTTER_KP_1:
-      *keyval = MOZ_KEY_NUMPAD1;
-      return TRUE;
-    case CLUTTER_KP_2:
-      *keyval = MOZ_KEY_NUMPAD2;
-      return TRUE;
-    case CLUTTER_KP_3:
-      *keyval = MOZ_KEY_NUMPAD3;
-      return TRUE;
-    case CLUTTER_KP_4:
-      *keyval = MOZ_KEY_NUMPAD4;
-      return TRUE;
-    case CLUTTER_KP_5:
-      *keyval = MOZ_KEY_NUMPAD5;
-      return TRUE;
-    case CLUTTER_KP_6:
-      *keyval = MOZ_KEY_NUMPAD6;
-      return TRUE;
-    case CLUTTER_KP_7:
-      *keyval = MOZ_KEY_NUMPAD7;
-      return TRUE;
-    case CLUTTER_KP_8:
-      *keyval = MOZ_KEY_NUMPAD8;
-      return TRUE;
-    case CLUTTER_KP_9:
-      *keyval = MOZ_KEY_NUMPAD9;
-      return TRUE;
-    case CLUTTER_KP_Add:
-      *keyval = MOZ_KEY_NUMPAD0;
-      return TRUE;
-    case CLUTTER_KP_Separator:
-      *keyval = MOZ_KEY_SEPARATOR;
-      return TRUE;
-    case CLUTTER_KP_Subtract:
-      *keyval = MOZ_KEY_SUBTRACT;
-      return TRUE;
-    case CLUTTER_KP_Decimal:
-      *keyval = MOZ_KEY_DECIMAL;
-      return TRUE;
-    case CLUTTER_KP_Divide:
-      *keyval = MOZ_KEY_DIVIDE;
-      return TRUE;
-    case CLUTTER_F1:
-      *keyval = MOZ_KEY_F1;
-      return TRUE;
-    case CLUTTER_F2:
-      *keyval = MOZ_KEY_F2;
-      return TRUE;
-    case CLUTTER_F3:
-      *keyval = MOZ_KEY_F3;
-      return TRUE;
-    case CLUTTER_F4:
-      *keyval = MOZ_KEY_F4;
-      return TRUE;
-    case CLUTTER_F5:
-      *keyval = MOZ_KEY_F5;
-      return TRUE;
-    case CLUTTER_F6:
-      *keyval = MOZ_KEY_F6;
-      return TRUE;
-    case CLUTTER_F7:
-      *keyval = MOZ_KEY_F7;
-      return TRUE;
-    case CLUTTER_F8:
-      *keyval = MOZ_KEY_F8;
-      return TRUE;
-    case CLUTTER_F9:
-      *keyval = MOZ_KEY_F9;
-      return TRUE;
-    case CLUTTER_F10:
-      *keyval = MOZ_KEY_F10;
-      return TRUE;
-    case CLUTTER_F11:
-      *keyval = MOZ_KEY_F11;
-      return TRUE;
-    case CLUTTER_F12:
-      *keyval = MOZ_KEY_F12;
-      return TRUE;
-    case CLUTTER_F13:
-      *keyval = MOZ_KEY_F13;
-      return TRUE;
-    case CLUTTER_F14:
-      *keyval = MOZ_KEY_F14;
-      return TRUE;
-    case CLUTTER_F15:
-      *keyval = MOZ_KEY_F15;
-      return TRUE;
-    case CLUTTER_F16:
-      *keyval = MOZ_KEY_F16;
-      return TRUE;
-    case CLUTTER_F17:
-      *keyval = MOZ_KEY_F17;
-      return TRUE;
-    case CLUTTER_F18:
-      *keyval = MOZ_KEY_F18;
-      return TRUE;
-    case CLUTTER_F19:
-      *keyval = MOZ_KEY_F19;
-      return TRUE;
-    case CLUTTER_F20:
-      *keyval = MOZ_KEY_F20;
-      return TRUE;
-    case CLUTTER_F21:
-      *keyval = MOZ_KEY_F21;
-      return TRUE;
-    case CLUTTER_F22:
-      *keyval = MOZ_KEY_F22;
-      return TRUE;
-    case CLUTTER_F23:
-      *keyval = MOZ_KEY_F23;
-      return TRUE;
-    case CLUTTER_F24:
-      *keyval = MOZ_KEY_F24;
-      return TRUE;
-    case CLUTTER_Num_Lock:
-      *keyval = MOZ_KEY_NUM_LOCK;
-      return TRUE;
-    case CLUTTER_Scroll_Lock:
-      *keyval = MOZ_KEY_SCROLL_LOCK;
-      return TRUE;
-    case CLUTTER_a:
-    case CLUTTER_A:
-      *keyval = MOZ_KEY_A;
-      return TRUE;
-    case CLUTTER_b:
-    case CLUTTER_B:
-      *keyval = MOZ_KEY_B;
-      return TRUE;
-    case CLUTTER_c:
-    case CLUTTER_C:
-      *keyval = MOZ_KEY_C;
-      return TRUE;
-    case CLUTTER_d:
-    case CLUTTER_D:
-      *keyval = MOZ_KEY_D;
-      return TRUE;
-    case CLUTTER_e:
-    case CLUTTER_E:
-      *keyval = MOZ_KEY_E;
-      return TRUE;
-    case CLUTTER_f:
-    case CLUTTER_F:
-      *keyval = MOZ_KEY_F;
-      return TRUE;
-    case CLUTTER_g:
-    case CLUTTER_G:
-      *keyval = MOZ_KEY_G;
-      return TRUE;
-    case CLUTTER_h:
-    case CLUTTER_H:
-      *keyval = MOZ_KEY_H;
-      return TRUE;
-    case CLUTTER_i:
-    case CLUTTER_I:
-      *keyval = MOZ_KEY_I;
-      return TRUE;
-    case CLUTTER_j:
-    case CLUTTER_J:
-      *keyval = MOZ_KEY_J;
-      return TRUE;
-    case CLUTTER_k:
-    case CLUTTER_K:
-      *keyval = MOZ_KEY_K;
-      return TRUE;
-    case CLUTTER_l:
-    case CLUTTER_L:
-      *keyval = MOZ_KEY_L;
-      return TRUE;
-    case CLUTTER_m:
-    case CLUTTER_M:
-      *keyval = MOZ_KEY_M;
-      return TRUE;
-    case CLUTTER_n:
-    case CLUTTER_N:
-      *keyval = MOZ_KEY_N;
-      return TRUE;
-    case CLUTTER_o:
-    case CLUTTER_O:
-      *keyval = MOZ_KEY_O;
-      return TRUE;
-    case CLUTTER_p:
-    case CLUTTER_P:
-      *keyval = MOZ_KEY_P;
-      return TRUE;
-    case CLUTTER_q:
-    case CLUTTER_Q:
-      *keyval = MOZ_KEY_Q;
-      return TRUE;
-    case CLUTTER_r:
-    case CLUTTER_R:
-      *keyval = MOZ_KEY_R;
-      return TRUE;
-    case CLUTTER_s:
-    case CLUTTER_S:
-      *keyval = MOZ_KEY_S;
-      return TRUE;
-    case CLUTTER_t:
-    case CLUTTER_T:
-      *keyval = MOZ_KEY_T;
-      return TRUE;
-    case CLUTTER_u:
-    case CLUTTER_U:
-      *keyval = MOZ_KEY_U;
-      return TRUE;
-    case CLUTTER_v:
-    case CLUTTER_V:
-      *keyval = MOZ_KEY_V;
-      return TRUE;
-    case CLUTTER_w:
-    case CLUTTER_W:
-      *keyval = MOZ_KEY_W;
-      return TRUE;
-    case CLUTTER_x:
-    case CLUTTER_X:
-      *keyval = MOZ_KEY_X;
-      return TRUE;
-    case CLUTTER_y:
-    case CLUTTER_Y:
-      *keyval = MOZ_KEY_Y;
-      return TRUE;
-    case CLUTTER_z:
-    case CLUTTER_Z:
-      *keyval = MOZ_KEY_Z;
+      *keyval = event->keyval - CLUTTER_a + MOZ_KEY_A;
+      return TRUE;
+    }
+  if (event->keyval >= CLUTTER_A && event->keyval <= CLUTTER_Z)
+    {
+      *keyval = event->keyval - CLUTTER_A + MOZ_KEY_A;
       return TRUE;
     }
 
+  /* numbers */
+  if ( event->keyval >= CLUTTER_0 && event->keyval <= CLUTTER_9)
+    {
+      *keyval = event->keyval - CLUTTER_0 + MOZ_KEY_0;
+      return TRUE;
+    }
+
+  /* keypad numbers */
+  if (event->keyval >= CLUTTER_KP_0 && event->keyval <= CLUTTER_KP_9)
+    {
+      *keyval = event->keyval - CLUTTER_KP_0 + MOZ_KEY_NUMPAD0;
+      return TRUE;
+    }
+
+  /* misc other things */
+  length = sizeof (mozKeycodes) / sizeof (struct mozKeyConverter);
+  for (i = 0; i < length; i++) {
+    if (mozKeycodes[i].keysym == event->keyval)
+      {
+        *keyval = (mozKeycodes[i].vkCode);
+        return TRUE;
+      }
+  }
+
+  /* function keys */
+  if (event->keyval >= CLUTTER_F1 && event->keyval <= CLUTTER_F24)
+    {
+      *keyval = event->keyval - CLUTTER_F1 + MOZ_KEY_F1;
+      return TRUE;
+    }
+
+  /* Any ascii we might've missed */
   if (g_ascii_isalnum (event->unicode_value))
     {
       *keyval = event->unicode_value;
       return TRUE;
     }
 
+  /* Unhandled */
   *keyval = 0;
 
   return FALSE;
