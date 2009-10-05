@@ -139,6 +139,10 @@ void clutter_mozembed_raise (ClutterMozEmbed *mozembed);
 
 void clutter_mozembed_set_layout_container (ClutterMozEmbed *mozembed, GtkWidget* container);
 
+void clutter_mozembed_set_search_string (ClutterMozEmbed *mozembed, const gchar *string);
+void clutter_mozembed_find_next (ClutterMozEmbed *mozembed);
+void clutter_mozembed_find_prev (ClutterMozEmbed *mozembed);
+
 G_END_DECLS
 
 #endif /* _CLUTTER_MOZEMBED */

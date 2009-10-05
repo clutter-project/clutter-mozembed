@@ -3445,3 +3445,36 @@ clutter_mozembed_set_layout_container (ClutterMozEmbed *mozembed,
   priv->layout_container = container;
 #endif
 }
+
+void
+clutter_mozembed_set_search_string (ClutterMozEmbed *mozembed,
+                                    const gchar     *string)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_SET_SEARCH_STRING,
+                               G_TYPE_STRING, string,
+                               G_TYPE_INVALID);
+}
+
+void
+clutter_mozembed_find_next (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_FIND_NEXT,
+                               G_TYPE_INVALID);
+}
+
+void
+clutter_mozembed_find_prev (ClutterMozEmbed *mozembed)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_FIND_PREV,
+                               G_TYPE_INVALID);
+}
+

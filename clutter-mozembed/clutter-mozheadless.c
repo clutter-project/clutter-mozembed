@@ -995,18 +995,18 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
           break;
         }
 #ifdef SUPPORT_IM
-      case CME_COMMAND_IM_COMMIT:
+      case CME_COMMAND_IM_COMMIT :
         {
-          gchar* str = clutter_mozembed_comms_receive_string (view->input);
+          gchar *str = clutter_mozembed_comms_receive_string (view->input);
 
           moz_headless_im_commit (MOZ_HEADLESS (moz_headless), str);
           g_free (str);
 
           break;
         }
-      case CME_COMMAND_IM_PREEDIT_CHANGED:
+      case CME_COMMAND_IM_PREEDIT_CHANGED :
         {
-          gchar* str;
+          gchar *str;
           gint cursor_pos;
 
           clutter_mozembed_comms_receive (view->input,
@@ -1021,6 +1021,24 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
           break;
         }
 #endif
+      case CME_COMMAND_SET_SEARCH_STRING :
+        {
+          gchar *str = clutter_mozembed_comms_receive_string (view->input);
+          moz_headless_set_find_string (MOZ_HEADLESS (moz_headless),
+                                        str);
+          g_free (str);
+          break;
+        }
+      case CME_COMMAND_FIND_NEXT :
+        {
+          moz_headless_find_next (MOZ_HEADLESS (moz_headless));
+          break;
+        }
+      case CME_COMMAND_FIND_PREV :
+        {
+          moz_headless_find_prev (MOZ_HEADLESS (moz_headless));
+          break;
+        }
       default :
         g_warning ("Unknown command (%d)", command);
     }
