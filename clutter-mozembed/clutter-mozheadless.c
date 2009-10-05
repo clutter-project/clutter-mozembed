@@ -1024,7 +1024,7 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
       case CME_COMMAND_SET_SEARCH_STRING :
         {
           gchar *str = clutter_mozembed_comms_receive_string (view->input);
-          moz_headless_set_find_string (MOZ_HEADLESS (moz_headless),
+          moz_headless_find_set_string (MOZ_HEADLESS (moz_headless),
                                         str);
           g_free (str);
           break;
