@@ -903,6 +903,18 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
           moz_headless_reload (headless, MOZ_HEADLESS_FLAG_RELOADBYPASSCACHE);
           break;
         }
+      case CME_COMMAND_CLOSE :
+        {
+          if (moz_headless_request_close (headless))
+            {
+              /* Disconnects will cause the unrefs, so no need to unref */
+              send_feedback_all (moz_headless,
+                                 CME_FEEDBACK_CLOSED,
+                                 G_TYPE_INVALID);
+            }
+
+          break;
+        }
       case CME_COMMAND_SET_CHROME :
         {
           gint chrome = clutter_mozembed_comms_receive_int (view->input);
@@ -918,9 +930,7 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
         }
       case CME_COMMAND_QUIT :
         {
-          /* FIXME: Er, will this unref not cause a crash? Must check this... */
           send_feedback_all (moz_headless, CME_FEEDBACK_CLOSED, G_TYPE_INVALID);
-          g_object_unref (moz_headless);
           break;
         }
       case CME_COMMAND_NEW_VIEW :

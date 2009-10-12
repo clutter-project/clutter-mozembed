@@ -3271,6 +3271,14 @@ clutter_mozembed_reload (ClutterMozEmbed *mozembed)
 }
 
 void
+clutter_mozembed_request_close (ClutterMozEmbed *mozembed)
+{
+  clutter_mozembed_comms_send (mozembed->priv->output,
+                               CME_COMMAND_CLOSE,
+                               G_TYPE_INVALID);
+}
+
+void
 clutter_mozembed_purge_session_history (ClutterMozEmbed *mozembed)
 {
   clutter_mozembed_comms_send (mozembed->priv->output,
