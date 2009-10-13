@@ -35,9 +35,13 @@ endif
 
 BUILT_SOURCES = \
 	clutter-mozembed-marshal.h \
-	clutter-mozembed-marshal.c
+	clutter-mozembed-marshal.c \
+	clutter-mozheadless-marshal.h \
+	clutter-mozheadless-marshal.c
 
-STAMP_FILES = stamp-clutter-mozembed-marshal.h
+STAMP_FILES = \
+	stamp-clutter-mozembed-marshal.h \
+	stamp-clutter-mozheadless-marshal.h
 
 clutter-mozembed-marshal.h: stamp-clutter-mozembed-marshal.h
 	@true
@@ -59,6 +63,27 @@ clutter-mozembed-marshal.c: Makefile clutter-mozembed-marshal.list
 	 $(srcdir)/clutter-mozembed-marshal.list ) > xgen-tmc && \
 	cp -f xgen-tmc clutter-mozembed-marshal.c && \
 	rm -f xgen-tmc
+
+clutter-mozheadless-marshal.h: stamp-clutter-mozheadless-marshal.h
+	@true
+stamp-clutter-mozheadless-marshal.h: Makefile clutter-mozheadless-marshal.list
+	$(GLIB_GENMARSHAL) \
+		--prefix=_clutter_mozheadless_marshal \
+		--header \
+	$(srcdir)/clutter-mozheadless-marshal.list > xgen-tmh2 && \
+	(cmp -s xgen-tmh2 clutter-mozheadless-marshal.h || \
+	 cp -f xgen-tmh2 clutter-mozheadless-marshal.h) && \
+	rm -f xgen-tmh2 && \
+	echo timestamp > $(@F)
+
+clutter-mozheadless-marshal.c: Makefile clutter-mozheadless-marshal.list
+	(echo "#include \"clutter-mozheadless-marshal.h\"" ; \
+	 $(GLIB_GENMARSHAL) \
+		--prefix=_clutter_mozheadless_marshal \
+		--body \
+	 $(srcdir)/clutter-mozheadless-marshal.list ) > xgen-tmc2 && \
+	cp -f xgen-tmc2 clutter-mozheadless-marshal.c && \
+	rm -f xgen-tmc2
 
 clutter-mozheadless-comms.c: clutter-mozembed-comms.c
 	cp $^ $@
@@ -108,7 +133,9 @@ clutter_mozheadless_SOURCES = \
 	clutter-mozheadless-private-browsing.cc \
 	clutter-mozheadless-private-browsing.h \
 	clutter-mozheadless-protocol-service.cc \
-	clutter-mozheadless-protocol-service.h
+	clutter-mozheadless-protocol-service.h \
+	clutter-mozheadless-marshal.h \
+	clutter-mozheadless-marshal.c
 
 lib_LTLIBRARIES = libclutter-mozembed-@CME_API_VERSION@.la
 
@@ -129,7 +156,8 @@ libclutter_mozembed_@CME_API_VERSION@_la_SOURCES = \
 	$(source_c) \
 	$(source_h) \
 	$(source_priv_h) \
-	$(BUILT_SOURCES)
+	clutter-mozembed-marshal.h \
+	clutter-mozembed-marshal.c
 
 library_includedir=$(includedir)/clutter-$(CLUTTER_API_VERSION)/clutter-mozembed
 library_include_HEADERS = $(source_h)
@@ -137,5 +165,6 @@ library_include_HEADERS = $(source_h)
 CLEANFILES = $(STAMP_FILES) $(BUILT_SOURCES) clutter-mozheadless-comms.c
 
 EXTRA_DIST = \
-	clutter-mozembed-marshal.list
+	clutter-mozembed-marshal.list \
+	clutter-mozheadless-marshal.list
 

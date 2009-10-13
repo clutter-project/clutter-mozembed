@@ -78,6 +78,9 @@ typedef struct {
 
   /* Signals */
   void (* cancel_download) (ClutterMozHeadless *headless, gint id);
+  void (* create_download) (ClutterMozHeadless *headless,
+                            const gchar        *uri,
+                            const gchar        *target);
 } ClutterMozHeadlessClass;
 
 GType clutter_mozheadless_get_type (void);

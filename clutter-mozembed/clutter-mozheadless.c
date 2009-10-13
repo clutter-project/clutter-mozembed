@@ -46,6 +46,7 @@
 #include "clutter-mozheadless-permission-manager.h"
 #include "clutter-mozheadless-protocol-service.h"
 #include "clutter-mozheadless-private-browsing.h"
+#include "clutter-mozheadless-marshal.h"
 
 #include "clutter-mozembed.h"
 
@@ -70,7 +71,7 @@ enum
 enum
 {
   CANCEL_DOWNLOAD,
-
+  CREATE_DOWNLOAD,
   LAST_SIGNAL
 };
 
@@ -406,6 +407,23 @@ static void
 hide_tooltip_cb (ClutterMozHeadless *self)
 {
   send_feedback_all (self, CME_FEEDBACK_HIDE_TOOLTIP, G_TYPE_INVALID);
+}
+
+static void
+context_info_cb (ClutterMozHeadless *self,
+                 guint               ctx_type,
+                 const char         *ctx_uri,
+                 const char         *ctx_href,
+                 const char         *ctx_img_href,
+                 const char         *selected_txt)
+{
+  send_feedback_all (self, CME_FEEDBACK_CONTEXT_INFO,
+                     G_TYPE_UINT, ctx_type,
+                     G_TYPE_STRING, ctx_uri,
+                     G_TYPE_STRING, ctx_href,
+                     G_TYPE_STRING, ctx_img_href,
+                     G_TYPE_STRING, selected_txt,
+                     G_TYPE_INVALID);
 }
 
 static void
@@ -1008,6 +1026,22 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
           g_signal_emit (view->parent, signals[CANCEL_DOWNLOAD], 0, id);
           break;
         }
+      case CME_COMMAND_DL_CREATE:
+        {
+          gchar *uri, *target;
+
+          clutter_mozembed_comms_receive (view->input,
+                                          G_TYPE_STRING, &uri,
+                                          G_TYPE_STRING, &target,
+                                          G_TYPE_INVALID);
+          g_signal_emit (view->parent, signals[CREATE_DOWNLOAD], 0,
+                         uri, target);
+
+          g_free (uri);
+          g_free (target);
+
+          break;
+        }
 #ifdef SUPPORT_IM
       case CME_COMMAND_IM_COMMIT :
         {
@@ -1405,6 +1439,8 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (show_tooltip_cb), NULL);
   g_signal_connect (object, "hide-tooltip",
                     G_CALLBACK (hide_tooltip_cb), NULL);
+  g_signal_connect (object, "context-info",
+                    G_CALLBACK (context_info_cb), NULL);
 #ifdef SUPPORT_IM
   g_signal_connect (object, "im-reset",
                     G_CALLBACK (im_reset_cb), NULL);
@@ -1520,6 +1556,15 @@ clutter_mozheadless_class_init (ClutterMozHeadlessClass *klass)
                   NULL, NULL,
                   g_cclosure_marshal_VOID__INT,
                   G_TYPE_NONE, 1, G_TYPE_INT);
+
+  signals[CREATE_DOWNLOAD] =
+    g_signal_new ("create-download",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozHeadlessClass, create_download),
+                  NULL, NULL,
+                  _clutter_mozheadless_marshal_VOID__STRING_STRING,
+                  G_TYPE_NONE, 2, G_TYPE_STRING, G_TYPE_STRING);
 }
 
 static void
@@ -1612,7 +1657,6 @@ main (int argc, char **argv)
   private = (argc > 4) ? (*argv[4] == 'p') : FALSE;
 
   clutter_mozheadless_prefs_init ();
-  clutter_mozheadless_downloads_init ();
   clutter_mozheadless_certs_init ();
   clutter_mozheadless_protocol_service_init ();
   clutter_mozheadless_private_browsing_init ();
@@ -1630,6 +1674,8 @@ main (int argc, char **argv)
                                "shm", argv[3],
                                "private", private,
                                NULL);
+
+  clutter_mozheadless_downloads_init (moz_headless);
 
   /* If private mode is requested then also start Mozilla's private
      mode. This largely won't make much difference because none of the

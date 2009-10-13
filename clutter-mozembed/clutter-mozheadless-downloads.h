@@ -25,7 +25,7 @@
 
 G_BEGIN_DECLS
 
-void clutter_mozheadless_downloads_init ();
+void clutter_mozheadless_downloads_init (ClutterMozHeadless *moz_headless);
 void clutter_mozheadless_downloads_deinit ();
 
 G_END_DECLS

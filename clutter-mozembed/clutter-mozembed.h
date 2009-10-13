@@ -80,6 +80,12 @@ typedef struct {
                          gint             x,
                          gint             y);
   void (* hide_tooltip) (ClutterMozEmbed *mozembed);
+  void (* context_info) (ClutterMozEmbed *mozembed,
+                         guint            ctx_type,
+                         const gchar     *ctx_uri,
+                         const gchar     *ctx_href,
+                         const gchar     *ctx_img_href,
+                         const gchar     *selected_txt);
 } ClutterMozEmbedClass;
 
 /* Security property's flags match Mozilla's nsIWebProgressListener values */
@@ -119,13 +125,17 @@ void clutter_mozembed_refresh (ClutterMozEmbed *mozembed);
 void clutter_mozembed_reload (ClutterMozEmbed *mozembed);
 void clutter_mozembed_request_close (ClutterMozEmbed *mozembed);
 GList *clutter_mozembed_get_downloads (ClutterMozEmbed *mozembed);
+void clutter_mozembed_save_uri (ClutterMozEmbed *mozembed,
+                                const gchar     *uri,
+                                const gchar     *target);
 gboolean clutter_mozembed_get_private (ClutterMozEmbed *mozembed);
 void clutter_mozembed_purge_session_history (ClutterMozEmbed *mozembed);
 
 gboolean clutter_mozembed_get_scrollbars (ClutterMozEmbed *mozembed);
 gboolean clutter_mozembed_get_async_scroll (ClutterMozEmbed *mozembed);
 void clutter_mozembed_set_scrollbars (ClutterMozEmbed *mozembed, gboolean show);
-void clutter_mozembed_set_async_scroll (ClutterMozEmbed *mozembed, gboolean async);
+void clutter_mozembed_set_async_scroll (ClutterMozEmbed *mozembed,
+                                        gboolean         async);
 void clutter_mozembed_scroll_by (ClutterMozEmbed *mozembed, gint dx, gint dy);
 void clutter_mozembed_scroll_to (ClutterMozEmbed *mozembed, gint x, gint y);
 
@@ -138,9 +148,11 @@ MozHeadlessCursorType clutter_mozembed_get_cursor (ClutterMozEmbed *mozembed);
 void clutter_mozembed_lower (ClutterMozEmbed *mozembed);
 void clutter_mozembed_raise (ClutterMozEmbed *mozembed);
 
-void clutter_mozembed_set_layout_container (ClutterMozEmbed *mozembed, GtkWidget* container);
+void clutter_mozembed_set_layout_container (ClutterMozEmbed *mozembed,
+                                            GtkWidget       *container);
 
-void clutter_mozembed_set_search_string (ClutterMozEmbed *mozembed, const gchar *string);
+void clutter_mozembed_set_search_string (ClutterMozEmbed *mozembed,
+                                         const gchar     *string);
 void clutter_mozembed_find_next (ClutterMozEmbed *mozembed);
 void clutter_mozembed_find_prev (ClutterMozEmbed *mozembed);
 

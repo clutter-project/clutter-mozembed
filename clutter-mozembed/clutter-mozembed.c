@@ -83,7 +83,7 @@ enum
   DOWNLOAD,
   SHOW_TOOLTIP,
   HIDE_TOOLTIP,
-
+  CONTEXT_INFO,
   LAST_SIGNAL
 };
 
@@ -737,6 +737,30 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
         break;
     }
 #endif
+    case CME_FEEDBACK_CONTEXT_INFO:
+      {
+        guint type;
+        gchar *uri, *href, *img_href, *txt;
+
+        clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_UINT, &type,
+                                        G_TYPE_STRING, &uri,
+                                        G_TYPE_STRING, &href,
+                                        G_TYPE_STRING, &img_href,
+                                        G_TYPE_STRING, &txt,
+                                        G_TYPE_INVALID);
+
+        g_signal_emit (self,
+                       signals[CONTEXT_INFO],
+                       0,
+                       type,
+                       uri,
+                       href,
+                       img_href,
+                       txt);
+
+        break;
+      }
     default :
       g_warning ("Unrecognised feedback received (%d)", feedback);
     }
@@ -3021,6 +3045,16 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                   NULL, NULL,
                   g_cclosure_marshal_VOID__VOID,
                   G_TYPE_NONE, 0);
+
+  signals[CONTEXT_INFO] =
+    g_signal_new ("context-info",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  G_STRUCT_OFFSET (ClutterMozEmbedClass, context_info),
+                  NULL, NULL,
+                  _clutter_mozembed_marshal_VOID__UINT_STRING_STRING_STRING_STRING,
+                  G_TYPE_NONE, 5, G_TYPE_UINT,
+                  G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
 }
 
 static void
@@ -3400,6 +3434,20 @@ GList *
 clutter_mozembed_get_downloads (ClutterMozEmbed *mozembed)
 {
   return g_hash_table_get_values (mozembed->priv->downloads);
+}
+
+void
+clutter_mozembed_save_uri (ClutterMozEmbed *mozembed,
+                           const gchar     *uri,
+                           const gchar     *target)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_DL_CREATE,
+                               G_TYPE_STRING, uri,
+                               G_TYPE_STRING, target,
+                               G_TYPE_INVALID);
 }
 
 gboolean
