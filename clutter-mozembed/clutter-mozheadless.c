@@ -203,9 +203,13 @@ progress_cb (ClutterMozHeadless *headless,
              gint64              curprogress,
              gint64              maxprogress)
 {
-  gdouble progress = (curprogress > maxprogress) ?
-                       curprogress / (gdouble)maxprogress :
-                       -1.0;
+  gdouble progress;
+
+  if ((maxprogress > 0) && (maxprogress >= curprogress))
+    progress = CLAMP (curprogress / (gdouble)maxprogress, 0.0, 100.0);
+  else
+    progress = -1.0;
+
   send_feedback_all (headless, CME_FEEDBACK_PROGRESS,
                      G_TYPE_DOUBLE, progress,
                      G_TYPE_INVALID);
