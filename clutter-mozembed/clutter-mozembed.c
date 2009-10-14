@@ -2360,6 +2360,8 @@ file_changed_cb (GFileMonitor      *monitor,
                                    G_IO_NVAL | G_IO_HUP,
                                    (GIOFunc)input_io_func,
                                    self);
+
+  priv->is_loading = FALSE;
 }
 
 static gboolean
@@ -3121,6 +3123,7 @@ clutter_mozembed_init (ClutterMozEmbed *self)
                                            NULL,
                                            _destroy_download_cb);
   priv->scrollbars = TRUE;
+  priv->is_loading = TRUE;
 
   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
 
