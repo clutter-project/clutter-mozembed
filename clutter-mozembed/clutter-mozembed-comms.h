@@ -68,6 +68,7 @@ typedef enum
   CME_COMMAND_UPDATE_ACK = 1,
   CME_COMMAND_OPEN_URL,
   CME_COMMAND_RESIZE,
+  CME_COMMAND_SET_TRANSPARENT,
   CME_COMMAND_MOTION,
   CME_COMMAND_BUTTON_PRESS,
   CME_COMMAND_BUTTON_RELEASE,
@@ -103,7 +104,7 @@ typedef enum
   ,
   CME_COMMAND_IM_COMMIT,
   CME_COMMAND_IM_PREEDIT_CHANGED
-#endif  
+#endif
 } ClutterMozEmbedCommand;
 
 void clutter_mozembed_comms_sendv (GIOChannel *channel, gint command_id, va_list args);

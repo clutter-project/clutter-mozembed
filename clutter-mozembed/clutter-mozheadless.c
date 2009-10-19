@@ -753,6 +753,13 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
 
           break;
         }
+      case CME_COMMAND_SET_TRANSPARENT :
+        {
+          gboolean transparent =
+            clutter_mozembed_comms_receive_boolean (view->input);
+          moz_headless_set_transparent (headless, transparent);
+          break;
+        }
       case CME_COMMAND_MOTION :
         {
           gint x, y;

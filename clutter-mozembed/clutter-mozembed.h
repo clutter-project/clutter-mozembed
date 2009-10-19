@@ -156,6 +156,9 @@ void clutter_mozembed_set_search_string (ClutterMozEmbed *mozembed,
 void clutter_mozembed_find_next (ClutterMozEmbed *mozembed);
 void clutter_mozembed_find_prev (ClutterMozEmbed *mozembed);
 
+void clutter_mozembed_set_transparent (ClutterMozEmbed *mozembed,
+                                       gboolean         transparent);
+
 G_END_DECLS
 
 #endif /* _CLUTTER_MOZEMBED */

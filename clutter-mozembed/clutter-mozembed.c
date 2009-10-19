@@ -3537,3 +3537,15 @@ clutter_mozembed_find_prev (ClutterMozEmbed *mozembed)
                                G_TYPE_INVALID);
 }
 
+void
+clutter_mozembed_set_transparent (ClutterMozEmbed *mozembed,
+                                  gboolean         transparent)
+{
+  ClutterMozEmbedPrivate *priv = mozembed->priv;
+
+  clutter_mozembed_comms_send (priv->output,
+                               CME_COMMAND_SET_TRANSPARENT,
+                               G_TYPE_BOOLEAN, transparent,
+                               G_TYPE_INVALID);
+}
+
