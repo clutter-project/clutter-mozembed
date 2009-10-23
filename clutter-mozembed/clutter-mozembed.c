@@ -2824,7 +2824,7 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                       "Amount of time to "
                                                       "try polling for a "
                                                       "connection (in ms).",
-                                                      0, G_MAXINT, 1000,
+                                                      0, G_MAXINT, 3000,
                                                       G_PARAM_READWRITE |
                                                       G_PARAM_STATIC_NAME |
                                                       G_PARAM_STATIC_NICK |
@@ -3116,7 +3116,7 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   priv->motion_ack = TRUE;
   priv->scroll_ack = TRUE;
   priv->spawn = TRUE;
-  priv->poll_timeout = 1000;
+  priv->poll_timeout = 3000;
   priv->connect_timeout = 10000;
   priv->downloads = g_hash_table_new_full (g_direct_hash,
                                            g_direct_equal,
