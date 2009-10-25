@@ -1,5 +1,5 @@
 AC_PREREQ(2.53)
-AC_INIT(clutter-mozembed, 0.10.3, http://www.moblin.org/)
+AC_INIT(clutter-mozembed, 0.10.4, http://www.moblin.org/)
 AM_INIT_AUTOMAKE()
 AC_CONFIG_SRCDIR(clutter-mozembed/clutter-mozembed.c)
 AM_CONFIG_HEADER(config.h)
