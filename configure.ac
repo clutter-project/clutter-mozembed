@@ -1,5 +1,5 @@
 AC_PREREQ(2.53)
-AC_INIT(clutter-mozembed, 0.10.4, http://www.moblin.org/)
+AC_INIT(clutter-mozembed, 0.10.5, http://www.moblin.org/)
 AM_INIT_AUTOMAKE()
 AC_CONFIG_SRCDIR(clutter-mozembed/clutter-mozembed.c)
 AM_CONFIG_HEADER(config.h)
@@ -47,7 +47,7 @@ PKG_CHECK_MODULES(GOBJECT, gobject-2.0 >= 2.12.0 gio-2.0)
 PKG_CHECK_MODULES(GTHREAD, gthread-2.0)
 PKG_CHECK_MODULES(CLUTTER, clutter-1.0 >= 1.0.0)
 PKG_CHECK_MODULES(MOZILLA, mozilla-js mozilla-headless >= 1.9.2a1pre)
-PKG_CHECK_MODULES(MHS, mhs-1.0 >= 0.10.2)
+PKG_CHECK_MODULES(MHS, mhs-1.0 >= 0.10.4)
 
 MOZHOME=`${PKG_CONFIG} --variable=prefix mozilla-headless`"/lib/xulrunner-"`${PKG_CONFIG} --modversion mozilla-headless`
 AC_SUBST([MOZHOME])
