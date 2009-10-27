@@ -741,14 +741,21 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
         }
       case CME_COMMAND_RESIZE :
         {
+          gint width, height;
           clutter_mozembed_comms_receive (view->input,
-                                          G_TYPE_INT, &priv->surface_width,
-                                          G_TYPE_INT, &priv->surface_height,
+                                          G_TYPE_INT, &width,
+                                          G_TYPE_INT, &height,
                                           G_TYPE_INVALID);
+
+          if ((width == priv->surface_width) && (height == priv->surface_height))
+            break;
+
+          priv->surface_width = width;
+          priv->surface_height = height;
 
           if (priv->waiting_for_ack)
             priv->pending_resize = TRUE;
-          else
+          else if (!priv->pending_resize)
             clutter_moz_headless_resize (moz_headless);
 
           break;

@@ -59,6 +59,9 @@ struct _ClutterMozEmbedPrivate
   int              image_size;
   guint            repaint_id;
 
+  gint             width;
+  gint             height;
+
   gboolean         read_only;
 
   /* Variables for throttling motion events */

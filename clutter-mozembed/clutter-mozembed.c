@@ -163,7 +163,6 @@ update (ClutterMozEmbed *self,
         gint             surface_height)
 {
   gboolean result;
-  float tex_width, tex_height;
 
   ClutterMozEmbedPrivate *priv = self->priv;
   GError *error = NULL;
@@ -177,15 +176,12 @@ update (ClutterMozEmbed *self,
         g_error ("Error opening shared memory");
     }
 
-  clutter_actor_get_size (CLUTTER_ACTOR (self), &tex_width, &tex_height);
-
   /* If the surface size of the mozilla window is different to our texture 
    * size, ignore it - it just means we've resized in the middle of the
    * backend drawing and we'll get a new update almost immediately anyway.
    */
   if (!priv->read_only)
-    if ((surface_width != (gint)tex_width) ||
-        (surface_height != (gint)tex_height))
+    if ((surface_width != priv->width) || (surface_height != priv->height))
       return;
 
   /* Watch out for a resize of the source data, only happens for read-only */
@@ -1798,8 +1794,8 @@ clutter_mozembed_allocate (ClutterActor           *actor,
   ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
-  width = (gint)(box->x2 - box->x1);
-  height = (gint)(box->y2 - box->y1);
+  priv->width = width = (gint)(box->x2 - box->x1);
+  priv->height = height = (gint)(box->y2 - box->y1);
 
   if (width < 0 || height < 0)
     return;
@@ -1807,7 +1803,9 @@ clutter_mozembed_allocate (ClutterActor           *actor,
   clutter_texture_get_base_size (CLUTTER_TEXTURE (actor),
                                  &tex_width, &tex_height);
 
-  if ((!priv->read_only) && ((tex_width != width) || (tex_height != height)))
+  if ((!priv->read_only) &&
+      (((tex_width != width) || (tex_height != height)) ||
+       !priv->image_data))
     {
       /* Unmap previous texture data */
       if (priv->image_data)
