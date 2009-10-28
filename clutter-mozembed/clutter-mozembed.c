@@ -182,7 +182,12 @@ update (ClutterMozEmbed *self,
    */
   if (!priv->read_only)
     if ((surface_width != priv->width) || (surface_height != priv->height))
-      return;
+      {
+        /*g_debug ("Size mismatch: %dx%d != %dx%d",
+                 surface_width, surface_height,
+                 priv->width, priv->height);*/
+        return;
+      }
 
   /* Watch out for a resize of the source data, only happens for read-only */
   if (priv->image_data &&
@@ -1794,8 +1799,8 @@ clutter_mozembed_allocate (ClutterActor           *actor,
   ClutterMozEmbed *mozembed = CLUTTER_MOZEMBED (actor);
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
-  priv->width = width = (gint)(box->x2 - box->x1);
-  priv->height = height = (gint)(box->y2 - box->y1);
+  width = (gint)(box->x2 - box->x1);
+  height = (gint)(box->y2 - box->y1);
 
   if (width < 0 || height < 0)
     return;
@@ -1813,6 +1818,9 @@ clutter_mozembed_allocate (ClutterActor           *actor,
           munmap (priv->image_data, priv->image_size);
           priv->image_data = NULL;
         }
+
+      priv->width = width;
+      priv->height = height;
 
       /* Send a resize command to the back-end */
       clutter_mozembed_comms_send (priv->output,

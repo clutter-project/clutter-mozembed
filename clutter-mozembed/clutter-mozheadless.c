@@ -122,7 +122,7 @@ static gboolean input_io_func (GIOChannel              *source,
                                ClutterMozHeadlessView  *view);
 
 static void security_change_cb (ClutterMozHeadless *self,
-                                void               *request,
+                                const gchar        *uri,
                                 guint               state,
                                 gpointer            ignored);
 
@@ -378,11 +378,14 @@ size_to_cb (ClutterMozHeadless *self, gint width, gint height)
 
 static void
 security_change_cb (ClutterMozHeadless *self,
-                    void               *request,
+                    const gchar        *uri,
                     guint               state,
                     gpointer            ignored)
 {
   ClutterMozHeadlessPrivate *priv = self->priv;
+
+  if (g_strcmp0 (uri, moz_headless_get_location (MOZ_HEADLESS (self))) != 0)
+    return;
 
   priv->security = state | (priv->security & CLUTTER_MOZEMBED_BAD_CERT);
   send_feedback_all (self, CME_FEEDBACK_SECURITY,
@@ -668,6 +671,9 @@ clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
   MozHeadless *headless = MOZ_HEADLESS (moz_headless);
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
 
+  priv->pending_resize = FALSE;
+
+  /*g_debug ("Resizing to %dx%d", priv->surface_width, priv->surface_height);*/
   moz_headless_set_surface (headless, NULL, 0, 0, 0);
   moz_headless_set_size (headless,
                          priv->surface_width,
@@ -702,10 +708,7 @@ clutter_moz_headless_unfreeze (ClutterMozHeadless *moz_headless)
   moz_headless_freeze_updates (headless, FALSE);
 
   if (priv->pending_resize)
-    {
-      clutter_moz_headless_resize (moz_headless);
-      priv->pending_resize = FALSE;
-    }
+    clutter_moz_headless_resize (moz_headless);
 }
 
 static void
