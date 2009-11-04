@@ -61,13 +61,17 @@ public:
 
   HeadlessPermission (const gchar *host_arg,
                       const gchar *type_arg,
-                      PRUint32 aCapability);
+                      PRUint32     aCapability,
+                      PRUint32     aExpireType,
+                      PRInt64      aExpireTime);
   virtual ~HeadlessPermission ();
 
 protected:
   nsCString host;
   nsCString type;
-  PRUint32 capability;
+  PRUint32  capability;
+  PRUint32  expire_type;
+  PRInt64   expire_time;
 };
 
 // {a1a81d35-1dad-4ad1-b989-0c6bd476072e}
@@ -131,7 +135,9 @@ HeadlessPermissionManager::~HeadlessPermissionManager ()
 NS_IMETHODIMP
 HeadlessPermissionManager::Add (nsIURI *uri,
                                 const char *type,
-                                PRUint32 permission)
+                                PRUint32 permission,
+                                PRUint32 expireType,
+                                PRInt64  expireTime)
 {
   nsresult rv = NS_OK;
   GError *error = NULL;
@@ -144,6 +150,8 @@ HeadlessPermissionManager::Add (nsIURI *uri,
                    spec.get (),
                    type,
                    permission,
+                   expireType,
+                   expireTime,
                    &error))
     {
       rv = mhs_error_to_nsresult (error);
@@ -267,7 +275,9 @@ HeadlessPermissionManager::GetEnumerator (nsISimpleEnumerator **enumerator)
           HeadlessPermission *hp =
             new HeadlessPermission (perms[i].host,
                                     perms[i].type,
-                                    perms[i].capability);
+                                    perms[i].capability,
+                                    perms[i].expire_type,
+                                    perms[i].expire_time);
           perm_array.AppendObject (hp);
         }
 
@@ -283,10 +293,14 @@ NS_IMPL_ISUPPORTS1 (HeadlessPermission, nsIPermission)
 
 HeadlessPermission::HeadlessPermission (const gchar *host_arg,
                                         const gchar *type_arg,
-                                        PRUint32 capability_arg)
+                                        PRUint32     capability_arg,
+                                        PRUint32     expire_type_arg,
+                                        PRInt64      expire_time_arg)
 : host (host_arg),
   type (type_arg),
-  capability (capability_arg)
+  capability (capability_arg),
+  expire_type (expire_type_arg),
+  expire_time (expire_time_arg)
 {
 }
 
@@ -312,6 +326,20 @@ NS_IMETHODIMP
 HeadlessPermission::GetCapability (PRUint32 *capability_out)
 {
   *capability_out = capability;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HeadlessPermission::GetExpireType (PRUint32 *expire_type_out)
+{
+  *expire_type_out = expire_type;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HeadlessPermission::GetExpireTime (PRInt64 *expire_time_out)
+{
+  *expire_time_out = expire_time;
   return NS_OK;
 }
 

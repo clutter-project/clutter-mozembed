@@ -69,6 +69,7 @@ class HeadlessCookie : public nsICookie2
                  gchar   *aPath,
                  PRInt64  aExpiry,
                  PRInt64  aCreationTime,
+                 PRInt64  aLastAccessed,
                  PRBool   aIsSession,
                  PRBool   aIsSecure,
                  PRBool   aIsHttpOnly)
@@ -78,6 +79,7 @@ class HeadlessCookie : public nsICookie2
     , mPath (aPath)
     , mExpiry (aExpiry)
     , mCreationTime (aCreationTime)
+    , mLastAccessed (aLastAccessed)
     , mIsSession (aIsSession != PR_FALSE)
     , mIsSecure (aIsSecure != PR_FALSE)
     , mIsHttpOnly (aIsHttpOnly != PR_FALSE)
@@ -91,6 +93,7 @@ class HeadlessCookie : public nsICookie2
   gchar        *mPath;
   PRInt64       mExpiry;
   PRInt64       mCreationTime;
+  PRInt64       mLastAccessed;
   PRPackedBool  mIsSession;
   PRPackedBool  mIsSecure;
   PRPackedBool  mIsHttpOnly;
@@ -114,6 +117,8 @@ class HeadlessCookieService : public nsICookieService,
   NS_DECL_NSICOOKIEMANAGER2
 
   static HeadlessCookieService *sHeadlessCookieService;
+  static nsresult               ArrayToEnumerator (GPtrArray            *ptr_array,
+                                                   nsISimpleEnumerator **aEnumerator);
 
  private:
   MhsCookies                   *mMhsCookies;
@@ -234,6 +239,13 @@ NS_IMETHODIMP
 HeadlessCookie::GetCreationTime (PRInt64 *aCreationTime)
 {
   *aCreationTime = mCreationTime;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HeadlessCookie::GetLastAccessed (PRInt64 *aLastAccessed)
+{
+  *aLastAccessed = mLastAccessed;
   return NS_OK;
 }
 
@@ -470,6 +482,96 @@ HeadlessCookieService::RemoveAll ()
   return (nsresult)ns_result;
 }
 
+/* static */
+nsresult
+HeadlessCookieService::ArrayToEnumerator (GPtrArray            *ptr_array,
+                                          nsISimpleEnumerator **aEnumerator)
+{
+  nsCOMArray<nsICookie> cookies (ptr_array->len);
+
+  for (guint i = 0; i < ptr_array->len; i++) {
+    gchar *name, *value, *host, *path;
+    gint64 expiry, creation, accessed;
+    gboolean is_session, is_secure, is_http_only;
+
+    GValueArray *array = (GValueArray *)g_ptr_array_index (ptr_array, i);
+
+    // Initialise default values (TODO: Verify these are sensible,
+    // although they shouldn't ever get used)
+    name = value = host = path = NULL;
+    expiry = creation = accessed = 0;
+    is_session = TRUE;
+    is_secure = is_http_only = FALSE;
+
+    for (guint j = 0; j < array->n_values; j++) {
+      GValue *gvalue = g_value_array_get_nth (array, j);
+
+      switch (j) {
+        case 0:
+          name = g_value_dup_string (gvalue);
+          break;
+
+        case 1:
+          value = g_value_dup_string (gvalue);
+          break;
+
+        case 2:
+          host = g_value_dup_string (gvalue);
+          break;
+
+        case 3:
+          path = g_value_dup_string (gvalue);
+          break;
+
+        case 4:
+          expiry = g_value_get_int64 (gvalue);
+          break;
+
+        case 5:
+          creation = g_value_get_int64 (gvalue);
+          break;
+
+        case 6:
+          accessed = g_value_get_int64 (gvalue);
+          break;
+
+        case 7:
+          is_session = g_value_get_boolean (gvalue);
+          break;
+
+        case 8:
+          is_secure = g_value_get_boolean (gvalue);
+          break;
+
+        case 9:
+          is_http_only = g_value_get_boolean (gvalue);
+          break;
+
+        default:
+          g_warning ("Unexpected value in cookie, ignoring");
+          break;
+      }
+    }
+
+    HeadlessCookie *cookie = new HeadlessCookie (name,
+                                                 value,
+                                                 host,
+                                                 path,
+                                                 expiry,
+                                                 creation,
+                                                 accessed,
+                                                 is_session,
+                                                 is_secure,
+                                                 is_http_only);
+    cookies.AppendObject (static_cast<nsICookie *>(cookie));
+
+    g_value_array_free (array);
+  }
+
+  g_ptr_array_free (ptr_array, TRUE);
+  return NS_NewArrayEnumerator (aEnumerator, cookies);
+}
+
 NS_IMETHODIMP
 HeadlessCookieService::GetEnumerator (nsISimpleEnumerator **aEnumerator)
 {
@@ -487,84 +589,7 @@ HeadlessCookieService::GetEnumerator (nsISimpleEnumerator **aEnumerator)
     g_warning ("Error getting all cookies: %s", error->message);
     g_error_free (error);
   } else if (ptr_array) {
-    nsCOMArray<nsICookie> cookies (ptr_array->len);
-
-    for (guint i = 0; i < ptr_array->len; i++) {
-      gchar *name, *value, *host, *path;
-      gint64 expiry, creation;
-      gboolean is_session, is_secure, is_http_only;
-
-      GValueArray *array = (GValueArray *)g_ptr_array_index (ptr_array, i);
-
-      // Initialise default values (TODO: Verify these are sensible,
-      // although they shouldn't ever get used)
-      name = value = host = path = NULL;
-      expiry = creation = 0;
-      is_session = TRUE;
-      is_secure = is_http_only = FALSE;
-
-      for (guint j = 0; j < array->n_values; j++) {
-        GValue *gvalue = g_value_array_get_nth (array, j);
-
-        switch (j) {
-          case 0:
-            name = g_value_dup_string (gvalue);
-            break;
-
-          case 1:
-            value = g_value_dup_string (gvalue);
-            break;
-
-          case 2:
-            host = g_value_dup_string (gvalue);
-            break;
-
-          case 3:
-            path = g_value_dup_string (gvalue);
-            break;
-
-          case 4:
-            expiry = g_value_get_int64 (gvalue);
-            break;
-
-          case 5:
-            creation = g_value_get_int64 (gvalue);
-            break;
-
-          case 6:
-            is_session = g_value_get_boolean (gvalue);
-            break;
-
-          case 7:
-            is_secure = g_value_get_boolean (gvalue);
-            break;
-
-          case 8:
-            is_http_only = g_value_get_boolean (gvalue);
-            break;
-
-          default:
-            g_warning ("Unexpected value in cookie, ignoring");
-            break;
-        }
-      }
-
-      HeadlessCookie *cookie = new HeadlessCookie (name,
-                                                   value,
-                                                   host,
-                                                   path,
-                                                   expiry,
-                                                   creation,
-                                                   is_session,
-                                                   is_secure,
-                                                   is_http_only);
-      cookies.AppendObject (static_cast<nsICookie *>(cookie));
-
-      g_value_array_free (array);
-    }
-
-    g_ptr_array_free (ptr_array, TRUE);
-    ns_result = NS_NewArrayEnumerator (aEnumerator, cookies);
+    ns_result = ArrayToEnumerator (ptr_array, aEnumerator);
   } else
     *aEnumerator = nsnull;
 
@@ -722,6 +747,32 @@ HeadlessCookieService::CountCookiesFromHost (const nsACString &aHost,
     g_error_free (error);
   } else
     *_retval = count;
+
+  return (nsresult)ns_result;
+}
+
+NS_IMETHODIMP
+HeadlessCookieService::GetCookiesFromHost (const nsACString     &aHost,
+                                           nsISimpleEnumerator **aEnumerator)
+{
+  gboolean result;
+  GError *error = NULL;
+  guint ns_result = NS_OK;
+  GPtrArray *ptr_array = NULL;
+
+  result = mhs_cookies_get_from_host (mMhsCookies,
+                                      nsCString (aHost).get (),
+                                      &ptr_array,
+                                      &error);
+
+  if (!result) {
+    ns_result = mhs_error_to_nsresult (error);
+    g_warning ("Error getting cookies from host: %s", error->message);
+    g_error_free (error);
+  } else if (ptr_array) {
+    ns_result = ArrayToEnumerator (ptr_array, aEnumerator);
+  } else
+    *aEnumerator = nsnull;
 
   return (nsresult)ns_result;
 }

@@ -228,13 +228,6 @@ net_stop_cb (ClutterMozHeadless *headless)
   send_feedback_all (headless, CME_FEEDBACK_NET_STOP, G_TYPE_INVALID);
 }
 
-static gboolean
-scroll_cb (MozHeadless *headless, MozHeadlessRect *rect, gint dx, gint dy)
-{
-  /*g_debug ("Scroll %d, %d", dx, dy);*/
-  return FALSE;
-}
-
 static void
 updated_cb (MozHeadless        *headless,
             gint                x,
@@ -1434,8 +1427,6 @@ clutter_mozheadless_constructed (GObject *object)
                     G_CALLBACK (net_start_cb), NULL);
   g_signal_connect (object, "net-stop",
                     G_CALLBACK (net_stop_cb), NULL);
-  g_signal_connect (object, "scroll",
-                    G_CALLBACK (scroll_cb), NULL);
   g_signal_connect (object, "updated",
                     G_CALLBACK (updated_cb), NULL);
   g_signal_connect (object, "new-window",
