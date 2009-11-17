@@ -33,7 +33,7 @@
 #include <fcntl.h>
 
 
-G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_X11_TYPE_TEXTURE_PIXMAP)
+G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_GLX_TYPE_TEXTURE_PIXMAP)
 
 #define MOZEMBED_PRIVATE(o) \
   (G_TYPE_INSTANCE_GET_PRIVATE ((o), CLUTTER_TYPE_MOZEMBED, ClutterMozEmbedPrivate))
