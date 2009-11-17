@@ -33,7 +33,7 @@
 #include <fcntl.h>
 
 
-G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_TYPE_TEXTURE)
+G_DEFINE_TYPE (ClutterMozEmbed, clutter_mozembed, CLUTTER_X11_TYPE_TEXTURE_PIXMAP)
 
 #define MOZEMBED_PRIVATE(o) \
   (G_TYPE_INSTANCE_GET_PRIVATE ((o), CLUTTER_TYPE_MOZEMBED, ClutterMozEmbedPrivate))
@@ -50,7 +50,7 @@ enum
   PROP_READONLY,
   PROP_INPUT,
   PROP_OUTPUT,
-  PROP_SHM,
+  PROP_XID,
   PROP_SPAWN,
   PROP_SCROLLBARS,
   PROP_ASYNC_SCROLL,
@@ -155,6 +155,7 @@ clamp_offset (ClutterMozEmbed *self)
 
 static void
 update (ClutterMozEmbed *self,
+        Drawable         drawable,
         gint             x,
         gint             y,
         gint             width,
@@ -162,19 +163,7 @@ update (ClutterMozEmbed *self,
         gint             surface_width,
         gint             surface_height)
 {
-  gboolean result;
-
   ClutterMozEmbedPrivate *priv = self->priv;
-  GError *error = NULL;
-
-  if (!priv->opened_shm)
-    {
-      /*g_debug ("Opening shm");*/
-      priv->opened_shm = TRUE;
-      priv->shm_fd = shm_open (priv->shm_name, O_RDONLY, 0444);
-      if (priv->shm_fd == -1)
-        g_error ("Error opening shared memory");
-    }
 
   /* If the surface size of the mozilla window is different to our texture 
    * size, ignore it - it just means we've resized in the middle of the
@@ -189,64 +178,19 @@ update (ClutterMozEmbed *self,
         return;
       }
 
-  /* Watch out for a resize of the source data, only happens for read-only */
-  if (priv->image_data &&
-      (priv->image_size != surface_width * surface_height * 4))
+  if (priv->drawable != drawable)
     {
-      munmap (priv->image_data, priv->image_size);
-      priv->image_data = NULL;
-    }
-
-  if (!priv->image_data)
-    {
-      /*g_debug ("mmapping data");*/
-      priv->image_size = surface_width * surface_height * 4;
-      priv->image_data = mmap (NULL, priv->image_size, PROT_READ,
-                               MAP_SHARED, priv->shm_fd, 0);
-
-      if (priv->image_data == MAP_FAILED)
-        {
-          g_warning ("Unable to mmap image data\n");
-          priv->image_data = NULL;
-          return;
-        }
+      clutter_x11_texture_pixmap_set_pixmap (CLUTTER_X11_TEXTURE_PIXMAP (self),
+                                             (Pixmap)drawable);
+      priv->drawable = drawable;
     }
 
   /*g_debug ("Reading data");*/
 
   /* Copy data to texture */
-  if ((x == 0) && (y == 0) && (width == surface_width) &&
-      (height == surface_height))
-    result = clutter_texture_set_from_rgb_data (CLUTTER_TEXTURE (self),
-                                                priv->image_data,
-                                                TRUE,
-                                                surface_width,
-                                                surface_height,
-                                                surface_width * 4,
-                                                4,
-                                                CLUTTER_TEXTURE_RGB_FLAG_BGR |
-                                                CLUTTER_TEXTURE_RGB_FLAG_PREMULT,
-                                                &error);
-  else
-    result = clutter_texture_set_area_from_rgb_data (CLUTTER_TEXTURE (self),
-                                                     priv->image_data + (x*4) +
-                                                     (y*surface_width*4),
-                                                     TRUE,
-                                                     x,
-                                                     y,
-                                                     width,
-                                                     height,
-                                                     surface_width * 4,
-                                                     4,
-                                                     CLUTTER_TEXTURE_RGB_FLAG_BGR |
-                                                     CLUTTER_TEXTURE_RGB_FLAG_PREMULT,
-                                                     &error);
-
-  if (!result)
-    {
-      g_warning ("Error setting texture data: %s", error->message);
-      g_error_free (error);
-    }
+  clutter_x11_texture_pixmap_update_area (CLUTTER_X11_TEXTURE_PIXMAP (self),
+                                          x, y,
+                                          width, height);
 }
 
 static void
@@ -315,10 +259,12 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
     {
     case CME_FEEDBACK_UPDATE :
       {
+        Drawable drawable;
         gint x, y, width, height, surface_width, surface_height,
              doc_width, doc_height, scroll_x, scroll_y;
 
         clutter_mozembed_comms_receive (priv->input,
+                                        G_TYPE_ULONG, &drawable,
                                         G_TYPE_INT, &x,
                                         G_TYPE_INT, &y,
                                         G_TYPE_INT, &width,
@@ -361,7 +307,10 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
           }
         clamp_offset (self);
 
-        update (self, x, y, width, height, surface_width, surface_height);
+        update (self, drawable,
+                x, y,
+                width, height,
+                surface_width, surface_height);
 
         priv->repaint_id =
           clutter_threads_add_repaint_func ((GSourceFunc)
@@ -469,13 +418,12 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
         /* If it is, send its details to the backend */
         if (new_window)
           {
-            gchar *output_file, *input_file, *shm_name;
+            gchar *output_file, *input_file;
 
-            output_file = input_file = shm_name = NULL;
+            output_file = input_file = NULL;
             g_object_get (G_OBJECT (new_window),
                           "output", &output_file,
                           "input", &input_file,
-                          "shm", &shm_name,
                           NULL);
 
             clutter_mozembed_comms_send (priv->output,
@@ -483,12 +431,10 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
                                          G_TYPE_BOOLEAN, TRUE,
                                          G_TYPE_STRING, input_file,
                                          G_TYPE_STRING, output_file,
-                                         G_TYPE_STRING, shm_name,
                                          G_TYPE_INVALID);
 
             g_free (output_file);
             g_free (input_file);
-            g_free (shm_name);
           }
         else
           clutter_mozembed_comms_send (priv->output,
@@ -520,12 +466,6 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
                                         G_TYPE_INT, &height,
                                         G_TYPE_INVALID);
         g_signal_emit (self, signals[SIZE_REQUEST], 0, width, height);
-        break;
-      }
-    case CME_FEEDBACK_SHM_NAME :
-      {
-        g_free (priv->shm_name);
-        priv->shm_name = clutter_mozembed_comms_receive_string (priv->input);
         break;
       }
     case CME_FEEDBACK_CURSOR :
@@ -1081,6 +1021,13 @@ clutter_mozembed_add_plugin (ClutterMozEmbed *mozembed,
   PluginWindow* plugin_window;
   ClutterMozEmbedPrivate *priv = mozembed->priv;
 
+  /* Turn off automatic updates, we don't want them (because we don't
+   * double-buffer).
+   */
+  clutter_x11_texture_pixmap_set_automatic (
+      CLUTTER_X11_TEXTURE_PIXMAP (mozembed),
+      FALSE);
+
   clutter_mozembed_init_viewport (mozembed);
   if (!priv->plugin_viewport_initialized)
     return;
@@ -1375,8 +1322,8 @@ clutter_mozembed_get_property (GObject *object, guint property_id,
     g_value_set_string (value, self->priv->output_file);
     break;
 
-  case PROP_SHM :
-    g_value_set_string (value, self->priv->shm_name);
+  case PROP_XID :
+    g_value_set_ulong (value, self->priv->drawable);
     break;
 
   case PROP_ICON :
@@ -1470,10 +1417,6 @@ clutter_mozembed_set_property (GObject *object, guint property_id,
 
   case PROP_OUTPUT :
     priv->output_file = g_value_dup_string (value);
-    break;
-
-  case PROP_SHM :
-    priv->shm_name = g_value_dup_string (value);
     break;
 
   case PROP_SPAWN :
@@ -1673,14 +1616,10 @@ clutter_mozembed_finalize (GObject *object)
   g_free (priv->title);
   g_free (priv->input_file);
   g_free (priv->output_file);
-  g_free (priv->shm_name);
 
   g_strfreev (priv->comp_paths);
   g_strfreev (priv->chrome_paths);
   g_free (priv->user_chrome_path);
-
-  if (priv->image_data)
-    munmap (priv->image_data, priv->image_size);
 
   G_OBJECT_CLASS (clutter_mozembed_parent_class)->finalize (object);
 }
@@ -1810,15 +1749,11 @@ clutter_mozembed_allocate (ClutterActor           *actor,
 
   if ((!priv->read_only) &&
       (((tex_width != width) || (tex_height != height)) ||
-       !priv->image_data))
+       !priv->drawable))
     {
-      /* Unmap previous texture data */
-      if (priv->image_data)
-        {
-          munmap (priv->image_data, priv->image_size);
-          priv->image_data = NULL;
-        }
-
+      clutter_x11_texture_pixmap_set_pixmap (CLUTTER_X11_TEXTURE_PIXMAP (actor),
+                                             None);
+      priv->drawable = None;
       priv->width = width;
       priv->height = height;
 
@@ -2516,7 +2451,6 @@ clutter_mozembed_constructed (GObject *object)
     CMH_BIN,
     NULL, /* Output pipe */
     NULL, /* Input pipe */
-    NULL, /* SHM name */
     NULL, /* Private mode */
     NULL
   };
@@ -2527,7 +2461,7 @@ clutter_mozembed_constructed (GObject *object)
 
   /* Set up out-of-process renderer */
 
-  /* Generate names for pipe/shm, if not provided */
+  /* Generate names for pipes, if not provided */
   /* Don't overwrite user-supplied pipe files */
   if (priv->output_file && g_file_test (priv->output_file, G_FILE_TEST_EXISTS))
     {
@@ -2550,26 +2484,21 @@ clutter_mozembed_constructed (GObject *object)
                                         g_get_tmp_dir (), getpid (),
                                         spawned_windows);
 
-  if (!priv->shm_name)
-    priv->shm_name = g_strdup_printf ("/mozheadless-%d-%d",
-                                      getpid (), spawned_windows);
-
   spawned_windows++;
 
   /* Spawn renderer */
   argv[1] = priv->output_file;
   argv[2] = priv->input_file;
-  argv[3] = priv->shm_name;
   if (priv->private)
-    argv[4] = "p";
+    argv[3] = "p";
 
   if (priv->spawn)
     {
       if (g_getenv ("CLUTTER_MOZEMBED_DEBUG"))
         {
-          g_message ("Waiting for '%s %s %s %s %s' to be run",
-                     argv[0], argv[1], argv[2], argv[3],
-                     priv->private ? argv[4] : "");
+          g_message ("Waiting for '%s %s %s %s' to be run",
+                     argv[0], argv[1], argv[2],
+                     priv->private ? argv[3] : "");
           priv->connect_timeout = 0;
         }
       else
@@ -2716,18 +2645,16 @@ clutter_mozembed_class_init (ClutterMozEmbedClass *klass)
                                                         G_PARAM_CONSTRUCT_ONLY));
 
   g_object_class_install_property (object_class,
-                                   PROP_SHM,
-                                   g_param_spec_string ("shm",
-                                                        "Named SHM",
-                                                        "Named shared memory "
-                                                        "region for image "
-                                                        "buffer.",
-                                                        NULL,
-                                                        G_PARAM_READWRITE |
-                                                        G_PARAM_STATIC_NAME |
-                                                        G_PARAM_STATIC_NICK |
-                                                        G_PARAM_STATIC_BLURB |
-                                                        G_PARAM_CONSTRUCT_ONLY));
+                                   PROP_XID,
+                                   g_param_spec_ulong ("xid",
+                                                       "Drawable XID",
+                                                       "XID of the buffer "
+                                                       "image.",
+                                                       0, G_MAXULONG, 0,
+                                                       G_PARAM_READABLE |
+                                                       G_PARAM_STATIC_NAME |
+                                                       G_PARAM_STATIC_NICK |
+                                                       G_PARAM_STATIC_BLURB));
 
   g_object_class_install_property (object_class,
                                    PROP_SPAWN,
@@ -3164,7 +3091,7 @@ clutter_mozembed_new (void)
 ClutterActor *
 clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
 {
-  gchar *input, *output, *shm;
+  gchar *input, *output;
   ClutterActor *mozembed;
 
   if (!parent)
@@ -3177,7 +3104,6 @@ clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
   g_object_get (G_OBJECT (mozembed),
                 "input", &input,
                 "output", &output,
-                "shm", &shm,
                 NULL);
   CLUTTER_MOZEMBED (mozembed)->priv->private = parent->priv->private;
 
@@ -3185,12 +3111,10 @@ clutter_mozembed_new_with_parent (ClutterMozEmbed *parent)
                                CME_COMMAND_NEW_WINDOW,
                                G_TYPE_STRING, input,
                                G_TYPE_STRING, output,
-                               G_TYPE_STRING, shm,
                                G_TYPE_INVALID);
 
   g_free (input);
   g_free (output);
-  g_free (shm);
 
   return mozembed;
 }

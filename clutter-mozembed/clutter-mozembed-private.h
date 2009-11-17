@@ -24,11 +24,11 @@
 #include <config.h>
 #include <glib/gstdio.h>
 #include <gio/gio.h>
+#include <clutter/x11/clutter-x11.h>
+#include <clutter/glx/clutter-glx.h>
 
 #ifdef SUPPORT_PLUGINS
 #include <X11/extensions/Xcomposite.h>
-#include <clutter/x11/clutter-x11.h>
-#include <clutter/glx/clutter-glx.h>
 #include <gdk/gdkx.h>
 #include <gtk/gtk.h>
 #endif
@@ -50,13 +50,9 @@ struct _ClutterMozEmbedPrivate
 
   gchar           *input_file;
   gchar           *output_file;
-  gchar           *shm_name;
-  gboolean         opened_shm;
-  int              shm_fd;
+  Drawable         drawable;
   gboolean         spawn;
 
-  void            *image_data;
-  int              image_size;
   guint            repaint_id;
 
   gint             width;

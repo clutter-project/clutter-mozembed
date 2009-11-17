@@ -24,6 +24,7 @@
 #include <gtk/gtk.h>
 #include <glib-object.h>
 #include <clutter/clutter.h>
+#include <clutter/x11/clutter-x11.h>
 #include <moz-headless.h>
 #include <clutter-mozembed/clutter-mozembed-download.h>
 
@@ -54,13 +55,13 @@ G_BEGIN_DECLS
 typedef struct _ClutterMozEmbedPrivate ClutterMozEmbedPrivate;
 
 typedef struct {
-  ClutterTexture parent;
+  ClutterX11TexturePixmap parent;
 
   ClutterMozEmbedPrivate *priv;
 } ClutterMozEmbed;
 
 typedef struct {
-  ClutterTextureClass parent_class;
+  ClutterX11TexturePixmapClass parent_class;
 
   /* Signals */
   void (* progress)     (ClutterMozEmbed *mozembed, gdouble progress);

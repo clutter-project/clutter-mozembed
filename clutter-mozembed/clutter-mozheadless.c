@@ -63,7 +63,7 @@ enum
 
   PROP_INPUT,
   PROP_OUTPUT,
-  PROP_SHM,
+  PROP_XID,
   PROP_CONNECT_TIMEOUT,
   PROP_PRIVATE
 };
@@ -86,13 +86,8 @@ struct _ClutterMozHeadlessPrivate
   gchar           *input_file;
   gchar           *output_file;
 
-  /* Shared memory variables */
-  int              shm_fd;
-  gchar           *shm_name;
-  void            *mmap_start;
-  size_t           mmap_length;
-
   /* Surface property variables */
+  Drawable         drawable;
   gint             surface_width;
   gint             surface_height;
 
@@ -100,7 +95,6 @@ struct _ClutterMozHeadlessPrivate
   ClutterMozEmbedCommand  sync_call;
   gchar                  *new_input_file;
   gchar                  *new_output_file;
-  gchar                  *new_shm_name;
 
   /* Connection timeout variables */
   guint            connect_timeout;
@@ -125,6 +119,21 @@ static void security_change_cb (ClutterMozHeadless *self,
                                 const gchar        *uri,
                                 guint               state,
                                 gpointer            ignored);
+
+Display *
+clutter_moz_headless_get_default_display ()
+{
+  static Display *dpy = None;
+
+  if (!dpy)
+    {
+      const gchar *display_name = g_getenv ("DISPLAY");
+      if (display_name)
+        dpy = XOpenDisplay (display_name);
+    }
+
+  return dpy;
+}
 
 void
 send_feedback_all (ClutterMozHeadless      *headless,
@@ -248,13 +257,15 @@ updated_cb (MozHeadless        *headless,
 
   /*g_debug ("Update +%d+%d %dx%d", x, y, width, height);*/
 
-  msync (priv->mmap_start, priv->mmap_length, MS_SYNC);
-
   moz_headless_get_document_size (headless, &doc_width, &doc_height);
   moz_headless_get_scroll_pos (headless, &sx, &sy);
 
+  /* Sync our X events first */
+  XSync (clutter_moz_headless_get_default_display (), False);
+
   /*g_debug ("Doc-size: %dx%d", doc_width, doc_height);*/
   send_feedback_all (CLUTTER_MOZHEADLESS (headless), CME_FEEDBACK_UPDATE,
+                     G_TYPE_ULONG, priv->drawable,
                      G_TYPE_INT, x,
                      G_TYPE_INT, y,
                      G_TYPE_INT, width,
@@ -296,24 +307,21 @@ new_window_cb (MozHeadless *headless, MozHeadless **newEmbed, guint chromemask)
                                G_TYPE_INVALID);
   block_until_command (moz_headless, CME_COMMAND_NEW_WINDOW_RESPONSE);
 
-  if (priv->new_input_file && priv->new_output_file && priv->new_shm_name)
+  if (priv->new_input_file && priv->new_output_file)
     {
       *newEmbed = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
                                 "chromeflags", chromemask,
                                 "output", priv->new_output_file,
                                 "input", priv->new_input_file,
-                                "shm", priv->new_shm_name,
                                 "private", priv->private,
                                 NULL);
       moz_headless_set_chrome_mask (*newEmbed, chromemask);
 
       g_free (priv->new_input_file);
       g_free (priv->new_output_file);
-      g_free (priv->new_shm_name);
 
       priv->new_input_file = NULL;
       priv->new_output_file = NULL;
-      priv->new_shm_name = NULL;
     }
   else
     *newEmbed = NULL;
@@ -454,19 +462,15 @@ file_changed_cb (GFileMonitor           *monitor,
                                    (GIOFunc)input_io_func,
                                    view);
 
-  /* Send the shm name and an update to the new view */
-  clutter_mozembed_comms_send (view->output, CME_FEEDBACK_SHM_NAME,
-                               G_TYPE_STRING, priv->shm_name,
-                               G_TYPE_INVALID);
-
   moz_headless_get_document_size (MOZ_HEADLESS (view->parent),
                                   &doc_width, &doc_height);
   moz_headless_get_scroll_pos (MOZ_HEADLESS (view->parent), &sx, &sy);
 
   /* If we have an active surface, send an update to this new view */
-  if (priv->mmap_start)
+  if (priv->drawable)
     {
       clutter_mozembed_comms_send (view->output, CME_FEEDBACK_UPDATE,
+                                   G_TYPE_ULONG, priv->drawable,
                                    G_TYPE_INT, 0,
                                    G_TYPE_INT, 0,
                                    G_TYPE_INT, priv->surface_width,
@@ -661,35 +665,55 @@ send_sack (ClutterMozHeadlessView *view)
 static void
 clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
 {
+  int screen;
+  Display *display;
+  /*XVisualInfo template, visual_info;*/
+
   MozHeadless *headless = MOZ_HEADLESS (moz_headless);
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
 
   priv->pending_resize = FALSE;
 
   /*g_debug ("Resizing to %dx%d", priv->surface_width, priv->surface_height);*/
-  moz_headless_set_surface (headless, NULL, 0, 0, 0);
+  moz_headless_set_xsurface (headless, NULL, None, NULL, 0, 0);
   moz_headless_set_size (headless,
                          priv->surface_width,
                          priv->surface_height);
 
-  if (priv->mmap_start)
-    munmap (priv->mmap_start, priv->mmap_length);
+  display = clutter_moz_headless_get_default_display ();
+  screen = DefaultScreen (display);
 
-  priv->mmap_length = priv->surface_width * priv->surface_height * 4;
-  ftruncate (priv->shm_fd, priv->mmap_length);
-  priv->mmap_start = mmap (NULL, priv->mmap_length, PROT_READ | PROT_WRITE,
-                           MAP_SHARED, priv->shm_fd, 0);
+  if (priv->drawable)
+      XFreePixmap (display, (Pixmap)priv->drawable);
 
-  if (priv->mmap_start == MAP_FAILED)
+  priv->drawable = XCreatePixmap (display,
+                                  GDK_ROOT_WINDOW (),
+                                  priv->surface_width,
+                                  priv->surface_height,
+                                  DefaultDepth (display, screen));
+
+  /* FIXME: Error checking */
+
+  /* Get the appropriate visual */
+  /*template.screen = screen;
+  if (XMatchVisualInfo (display,
+                        screen,
+                        DefaultDepth (display, screen),
+                        TrueColor,
+                        &visual_info) == 0)
     {
-      g_warning ("Unable to mmap region for headless surface\n");
-      priv->mmap_start = NULL;
+      g_warning ("Unable to get suitable visual");
+      XFreePixmap (display, (Pixmap)priv->drawable);
+      priv->drawable = None;
       return;
-    }
+    }*/
 
-  moz_headless_set_surface (headless, priv->mmap_start,
-                            priv->surface_width, priv->surface_height,
-                            priv->surface_width * 4);
+  moz_headless_set_xsurface (headless,
+                             (gpointer)display,
+                             (gulong)priv->drawable,
+                             /*visual_info.visual,*/
+                             (gpointer)DefaultVisual (display, screen),
+                             priv->surface_width, priv->surface_height);
 }
 
 static void
@@ -902,14 +926,6 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
                                        G_TYPE_INVALID);
           break;
         }
-      case CME_COMMAND_GET_SHM_NAME :
-        {
-          clutter_mozembed_comms_send (view->output,
-                                       CME_FEEDBACK_SHM_NAME,
-                                       G_TYPE_STRING, priv->shm_name,
-                                       G_TYPE_INVALID);
-          break;
-        }
       case CME_COMMAND_BACK :
         {
           moz_headless_go_back (headless);
@@ -981,18 +997,16 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
         }
       case CME_COMMAND_NEW_WINDOW :
         {
-          gchar *input, *output, *shm;
+          gchar *input, *output;
 
           clutter_mozembed_comms_receive (view->input,
                                           G_TYPE_STRING, &input,
                                           G_TYPE_STRING, &output,
-                                          G_TYPE_STRING, &shm,
                                           G_TYPE_INVALID);
 
           g_object_new (CLUTTER_TYPE_MOZHEADLESS,
                         "input", input,
                         "output", output,
-                        "shm", shm,
                         "private", priv->private,
                         NULL);
 
@@ -1005,7 +1019,6 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
               clutter_mozembed_comms_receive (view->input,
                                               G_TYPE_STRING, &priv->new_input_file,
                                               G_TYPE_STRING, &priv->new_output_file,
-                                              G_TYPE_STRING, &priv->new_shm_name,
                                               G_TYPE_INVALID);
             }
           else
@@ -1014,8 +1027,6 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
               priv->new_input_file = NULL;
               g_free (priv->new_output_file);
               priv->new_output_file = NULL;
-              g_free (priv->new_shm_name);
-              priv->new_shm_name = NULL;
             }
           break;
         }
@@ -1297,8 +1308,8 @@ clutter_mozheadless_get_property (GObject *object, guint property_id,
     g_value_set_string (value, priv->output_file);
     break;
 
-  case PROP_SHM :
-    g_value_set_string (value, priv->shm_name);
+  case PROP_XID :
+    g_value_set_ulong (value, priv->drawable);
     break;
 
   case PROP_CONNECT_TIMEOUT :
@@ -1327,10 +1338,6 @@ clutter_mozheadless_set_property (GObject *object, guint property_id,
 
   case PROP_OUTPUT :
     priv->output_file = g_value_dup_string (value);
-    break;
-
-  case PROP_SHM :
-    priv->shm_name = g_value_dup_string (value);
     break;
 
   case PROP_CONNECT_TIMEOUT :
@@ -1371,9 +1378,12 @@ clutter_mozheadless_finalize (GObject *object)
 {
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (object)->priv;
 
-  shm_unlink (priv->shm_name);
-
-  g_free (priv->shm_name);
+  if (priv->drawable)
+    {
+      XFreePixmap (clutter_moz_headless_get_default_display (),
+                   (Pixmap)priv->drawable);
+      priv->drawable = None;
+    }
 
   g_free (priv->input_file);
   g_free (priv->output_file);
@@ -1404,16 +1414,6 @@ clutter_mozheadless_constructed (GObject *object)
   clutter_mozheadless_create_view (self,
                                    g_strdup (priv->input_file),
                                    g_strdup (priv->output_file));
-
-  if (!priv->shm_name)
-    {
-      priv->shm_name = g_strdup_printf ("/mozheadless-%d-%d",
-                                        getpid (),
-                                        spawned_heads);
-    }
-  priv->shm_fd = shm_open (priv->shm_name, O_CREAT | O_RDWR | O_TRUNC, 0666);
-  if (priv->shm_fd == -1)
-    g_error ("Error opening shared memory");
 
   g_signal_connect (object, "location",
                     G_CALLBACK (location_cb), NULL);
@@ -1517,18 +1517,16 @@ clutter_mozheadless_class_init (ClutterMozHeadlessClass *klass)
                                                         G_PARAM_CONSTRUCT_ONLY));
 
   g_object_class_install_property (object_class,
-                                   PROP_SHM,
-                                   g_param_spec_string ("shm",
-                                                        "Named SHM",
-                                                        "Named shared memory "
-                                                        "region for image "
-                                                        "buffer.",
-                                                        NULL,
-                                                        G_PARAM_READWRITE |
-                                                        G_PARAM_STATIC_NAME |
-                                                        G_PARAM_STATIC_NICK |
-                                                        G_PARAM_STATIC_BLURB |
-                                                        G_PARAM_CONSTRUCT_ONLY));
+                                   PROP_XID,
+                                   g_param_spec_ulong ("xid",
+                                                       "Drawable XID",
+                                                       "XID of the buffer "
+                                                       "image.",
+                                                       0, G_MAXULONG, 0,
+                                                       G_PARAM_READABLE |
+                                                       G_PARAM_STATIC_NAME |
+                                                       G_PARAM_STATIC_NICK |
+                                                       G_PARAM_STATIC_BLURB));
 
   g_object_class_install_property (object_class,
                                    PROP_CONNECT_TIMEOUT,
@@ -1607,9 +1605,9 @@ main (int argc, char **argv)
   gtk_init (&argc, &argv);
 #endif
 
-  if ((argc != 4) && (argc != 5))
+  if ((argc != 3) && (argc != 4))
     {
-      printf ("Usage: %s <output pipe> <input pipe> <shm name>\n", argv[0]);
+      printf ("Usage: %s <output pipe> <input pipe> [p]\n", argv[0]);
       return 1;
     }
 
@@ -1662,7 +1660,7 @@ main (int argc, char **argv)
 
   moz_headless_push_startup ();
 
-  private = (argc > 4) ? (*argv[4] == 'p') : FALSE;
+  private = (argc > 3) ? (*argv[3] == 'p') : FALSE;
 
   clutter_mozheadless_prefs_init ();
   clutter_mozheadless_certs_init ();
@@ -1679,7 +1677,6 @@ main (int argc, char **argv)
   moz_headless = g_object_new (CLUTTER_TYPE_MOZHEADLESS,
                                "output", argv[1],
                                "input", argv[2],
-                               "shm", argv[3],
                                "private", private,
                                NULL);
 
