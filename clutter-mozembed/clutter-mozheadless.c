@@ -259,17 +259,19 @@ updated_cb (MozHeadless        *headless,
   moz_headless_get_document_size (headless, &doc_width, &doc_height);
   moz_headless_get_scroll_pos (headless, &sx, &sy);
 
-  /* Copy from back buffer to front buffer. There's no need to sync, we rely
-   * on automatic pixmap updates anyway.
+  /* Copy from back buffer to front buffer. We tell the backends so that
+   * they can update their pixmap reference if necessary, and so that they
+   * can tell us when they've finished so we don't resize/free the pixmap
+   * while they're still using it.
    */
   XCopyArea (clutter_moz_headless_get_default_display (),
              priv->buffer[0],
              priv->buffer[1],
              priv->buffer_gc,
-             0, 0,
-             priv->surface_width,
-             priv->surface_height,
-             0, 0);
+             x, y,
+             width,
+             height,
+             x, y);
   XSync (clutter_moz_headless_get_default_display (), False);
 
   send_feedback_all (CLUTTER_MOZHEADLESS (headless), CME_FEEDBACK_UPDATE,
