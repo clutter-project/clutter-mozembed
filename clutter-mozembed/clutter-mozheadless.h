@@ -68,7 +68,7 @@ typedef struct
   GIOChannel      *output;
   guint            watch_id;
   GFileMonitor    *monitor;
-  gboolean         waiting_for_ack;
+  gint             waiting_for_ack;
   guint            mack_source;
   guint            sack_source;
 } ClutterMozHeadlessView;

@@ -87,7 +87,8 @@ struct _ClutterMozHeadlessPrivate
   gchar           *output_file;
 
   /* Surface property variables */
-  Drawable         drawable;
+  Drawable         buffer[2];
+  GC               buffer_gc;
   gint             surface_width;
   gint             surface_height;
 
@@ -249,9 +250,7 @@ updated_cb (MozHeadless        *headless,
 
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (headless)->priv;
 
-  /* If we're pending a resize, the surface width/height will be incorrect
-   * and we could cause a crash in the embedder.
-   */
+  /* If we're pending a resize, the surface width/height will be incorrect */
   if (priv->pending_resize)
     return;
 
@@ -260,39 +259,36 @@ updated_cb (MozHeadless        *headless,
   moz_headless_get_document_size (headless, &doc_width, &doc_height);
   moz_headless_get_scroll_pos (headless, &sx, &sy);
 
-  /* Sync our X events first */
+  /* Copy from back buffer to front buffer. There's no need to sync, we rely
+   * on automatic pixmap updates anyway.
+   */
+  XCopyArea (clutter_moz_headless_get_default_display (),
+             priv->buffer[0],
+             priv->buffer[1],
+             priv->buffer_gc,
+             0, 0,
+             priv->surface_width,
+             priv->surface_height,
+             0, 0);
   XSync (clutter_moz_headless_get_default_display (), False);
 
-  /*g_debug ("Doc-size: %dx%d", doc_width, doc_height);*/
   send_feedback_all (CLUTTER_MOZHEADLESS (headless), CME_FEEDBACK_UPDATE,
-                     G_TYPE_ULONG, priv->drawable,
-                     G_TYPE_INT, x,
-                     G_TYPE_INT, y,
-                     G_TYPE_INT, width,
-                     G_TYPE_INT, height,
-                     G_TYPE_INT, priv->surface_width,
-                     G_TYPE_INT, priv->surface_height,
+                     G_TYPE_ULONG, priv->buffer[1],
                      G_TYPE_INT, sx,
                      G_TYPE_INT, sy,
                      G_TYPE_INT, doc_width,
                      G_TYPE_INT, doc_height,
                      G_TYPE_INVALID);
 
+  /*g_debug ("Doc-size: %dx%d", doc_width, doc_height);*/
+
   for (v = priv->views; v; v = v->next)
     {
       ClutterMozHeadlessView *view = v->data;
 
-      /* This shouldn't happen (because if we're waiting for an ack, we've
-       * frozen updates), but put this check in just in case.
-       */
-      if (view->waiting_for_ack)
-        continue;
-
       priv->waiting_for_ack ++;
-      view->waiting_for_ack = TRUE;
+      view->waiting_for_ack ++;
     }
-
-  moz_headless_freeze_updates (headless, TRUE);
 }
 
 static void
@@ -466,27 +462,18 @@ file_changed_cb (GFileMonitor           *monitor,
                                   &doc_width, &doc_height);
   moz_headless_get_scroll_pos (MOZ_HEADLESS (view->parent), &sx, &sy);
 
-  /* If we have an active surface, send an update to this new view */
-  if (priv->drawable)
+  /* If we have an active surface, inform the view of it */
+  if (priv->buffer[1])
     {
       clutter_mozembed_comms_send (view->output, CME_FEEDBACK_UPDATE,
-                                   G_TYPE_ULONG, priv->drawable,
-                                   G_TYPE_INT, 0,
-                                   G_TYPE_INT, 0,
-                                   G_TYPE_INT, priv->surface_width,
-                                   G_TYPE_INT, priv->surface_height,
-                                   G_TYPE_INT, priv->surface_width,
-                                   G_TYPE_INT, priv->surface_height,
+                                   G_TYPE_ULONG, priv->buffer[1],
                                    G_TYPE_INT, sx,
                                    G_TYPE_INT, sy,
                                    G_TYPE_INT, doc_width,
                                    G_TYPE_INT, doc_height,
                                    G_TYPE_INVALID);
 
-      if (!priv->waiting_for_ack)
-        moz_headless_freeze_updates (MOZ_HEADLESS (view->parent), TRUE);
-
-      view->waiting_for_ack = TRUE;
+      view->waiting_for_ack ++;
       priv->waiting_for_ack ++;
     }
 
@@ -665,8 +652,8 @@ send_sack (ClutterMozHeadlessView *view)
 static void
 clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
 {
-  int screen;
   Display *display;
+  int screen, depth;
   /*XVisualInfo template, visual_info;*/
 
   MozHeadless *headless = MOZ_HEADLESS (moz_headless);
@@ -682,50 +669,48 @@ clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
 
   display = clutter_moz_headless_get_default_display ();
   screen = DefaultScreen (display);
+  depth = DefaultDepth (display, screen);
 
-  if (priv->drawable)
-      XFreePixmap (display, (Pixmap)priv->drawable);
+  if (priv->buffer[0])
+    XFreePixmap (display, (Pixmap)priv->buffer[0]);
+  if (priv->buffer[1])
+    XFreePixmap (display, (Pixmap)priv->buffer[1]);
+  if (priv->buffer_gc)
+    XFreeGC (display, priv->buffer_gc);
 
-  priv->drawable = XCreatePixmap (display,
+  /* FIXME: Error checking */
+  priv->buffer[0] = XCreatePixmap (display,
                                   GDK_ROOT_WINDOW (),
                                   priv->surface_width,
                                   priv->surface_height,
-                                  DefaultDepth (display, screen));
-
-  /* FIXME: Error checking */
+                                  depth);
+  priv->buffer[1] = XCreatePixmap (display,
+                                  GDK_ROOT_WINDOW (),
+                                  priv->surface_width,
+                                  priv->surface_height,
+                                  depth);
+  priv->buffer_gc = XCreateGC (display, priv->buffer[1], 0, NULL);
 
   /* Get the appropriate visual */
   /*template.screen = screen;
   if (XMatchVisualInfo (display,
                         screen,
-                        DefaultDepth (display, screen),
+                        depth,
                         TrueColor,
                         &visual_info) == 0)
     {
       g_warning ("Unable to get suitable visual");
-      XFreePixmap (display, (Pixmap)priv->drawable);
-      priv->drawable = None;
+      XFreePixmap (display, (Pixmap)priv->buffer[0]);
+      priv->buffer[0] = None;
       return;
     }*/
 
   moz_headless_set_xsurface (headless,
                              (gpointer)display,
-                             (gulong)priv->drawable,
+                             (gulong)priv->buffer[0],
                              /*visual_info.visual,*/
                              (gpointer)DefaultVisual (display, screen),
                              priv->surface_width, priv->surface_height);
-}
-
-static void
-clutter_moz_headless_unfreeze (ClutterMozHeadless *moz_headless)
-{
-  MozHeadless *headless = MOZ_HEADLESS (moz_headless);
-  ClutterMozHeadlessPrivate *priv = moz_headless->priv;
-
-  moz_headless_freeze_updates (headless, FALSE);
-
-  if (priv->pending_resize)
-    clutter_moz_headless_resize (moz_headless);
 }
 
 static void
@@ -744,11 +729,11 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
     {
       case CME_COMMAND_UPDATE_ACK :
         {
-          view->waiting_for_ack = FALSE;
+          view->waiting_for_ack --;
           priv->waiting_for_ack --;
 
-          if (priv->waiting_for_ack == 0)
-            clutter_moz_headless_unfreeze (moz_headless);
+          if (!priv->waiting_for_ack && priv->pending_resize)
+            clutter_moz_headless_resize (moz_headless);
 
           break;
         }
@@ -1121,8 +1106,8 @@ disconnect_view (ClutterMozHeadlessView *view)
   if (view->waiting_for_ack)
     {
       priv->waiting_for_ack --;
-      if (priv->waiting_for_ack == 0)
-        clutter_moz_headless_unfreeze (view->parent);
+      if (!priv->waiting_for_ack && priv->pending_resize)
+        clutter_moz_headless_resize (view->parent);
     }
 
   if (view->monitor)
@@ -1298,7 +1283,7 @@ clutter_mozheadless_get_property (GObject *object, guint property_id,
                                   GValue *value, GParamSpec *pspec)
 {
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (object)->priv;
-  
+
   switch (property_id) {
   case PROP_INPUT :
     g_value_set_string (value, priv->input_file);
@@ -1306,10 +1291,6 @@ clutter_mozheadless_get_property (GObject *object, guint property_id,
 
   case PROP_OUTPUT :
     g_value_set_string (value, priv->output_file);
-    break;
-
-  case PROP_XID :
-    g_value_set_ulong (value, priv->drawable);
     break;
 
   case PROP_CONNECT_TIMEOUT :
@@ -1378,12 +1359,15 @@ clutter_mozheadless_finalize (GObject *object)
 {
   ClutterMozHeadlessPrivate *priv = CLUTTER_MOZHEADLESS (object)->priv;
 
-  if (priv->drawable)
-    {
-      XFreePixmap (clutter_moz_headless_get_default_display (),
-                   (Pixmap)priv->drawable);
-      priv->drawable = None;
-    }
+  if (priv->buffer[0])
+    XFreePixmap (clutter_moz_headless_get_default_display (),
+                 priv->buffer[0]);
+  if (priv->buffer[1])
+    XFreePixmap (clutter_moz_headless_get_default_display (),
+                 priv->buffer[1]);
+  if (priv->buffer_gc)
+    XFreeGC (clutter_moz_headless_get_default_display (),
+             priv->buffer_gc);
 
   g_free (priv->input_file);
   g_free (priv->output_file);

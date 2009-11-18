@@ -155,28 +155,9 @@ clamp_offset (ClutterMozEmbed *self)
 
 static void
 update (ClutterMozEmbed *self,
-        Drawable         drawable,
-        gint             x,
-        gint             y,
-        gint             width,
-        gint             height,
-        gint             surface_width,
-        gint             surface_height)
+        Drawable         drawable)
 {
   ClutterMozEmbedPrivate *priv = self->priv;
-
-  /* If the surface size of the mozilla window is different to our texture 
-   * size, ignore it - it just means we've resized in the middle of the
-   * backend drawing and we'll get a new update almost immediately anyway.
-   */
-  if (!priv->read_only)
-    if ((surface_width != priv->width) || (surface_height != priv->height))
-      {
-        /*g_debug ("Size mismatch: %dx%d != %dx%d",
-                 surface_width, surface_height,
-                 priv->width, priv->height);*/
-        return;
-      }
 
   if (priv->drawable != drawable)
     {
@@ -184,13 +165,6 @@ update (ClutterMozEmbed *self,
                                              (Pixmap)drawable);
       priv->drawable = drawable;
     }
-
-  /*g_debug ("Reading data");*/
-
-  /* Copy data to texture */
-  clutter_x11_texture_pixmap_update_area (CLUTTER_X11_TEXTURE_PIXMAP (self),
-                                          x, y,
-                                          width, height);
 }
 
 static void
@@ -260,17 +234,10 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
     case CME_FEEDBACK_UPDATE :
       {
         Drawable drawable;
-        gint x, y, width, height, surface_width, surface_height,
-             doc_width, doc_height, scroll_x, scroll_y;
+        gint doc_width, doc_height, scroll_x, scroll_y;
 
         clutter_mozembed_comms_receive (priv->input,
                                         G_TYPE_ULONG, &drawable,
-                                        G_TYPE_INT, &x,
-                                        G_TYPE_INT, &y,
-                                        G_TYPE_INT, &width,
-                                        G_TYPE_INT, &height,
-                                        G_TYPE_INT, &surface_width,
-                                        G_TYPE_INT, &surface_height,
                                         G_TYPE_INT, &scroll_x,
                                         G_TYPE_INT, &scroll_y,
                                         G_TYPE_INT, &doc_width,
@@ -307,17 +274,16 @@ process_feedback (ClutterMozEmbed *self, ClutterMozEmbedFeedback feedback)
           }
         clamp_offset (self);
 
-        update (self, drawable,
-                x, y,
-                width, height,
-                surface_width, surface_height);
+        update (self, drawable);
 
         priv->repaint_id =
           clutter_threads_add_repaint_func ((GSourceFunc)
                                             clutter_mozembed_repaint_func,
                                             self,
                                             NULL);
-        clutter_actor_queue_redraw (CLUTTER_ACTOR (self));
+
+        /* We don't queue a redraw, the pixmap update will cause the redraw */
+
         break;
       }
     case CME_FEEDBACK_MOTION_ACK :
@@ -1020,13 +986,6 @@ clutter_mozembed_add_plugin (ClutterMozEmbed *mozembed,
 {
   PluginWindow* plugin_window;
   ClutterMozEmbedPrivate *priv = mozembed->priv;
-
-  /* Turn off automatic updates, we don't want them (because we don't
-   * double-buffer).
-   */
-  clutter_x11_texture_pixmap_set_automatic (
-      CLUTTER_X11_TEXTURE_PIXMAP (mozembed),
-      FALSE);
 
   clutter_mozembed_init_viewport (mozembed);
   if (!priv->plugin_viewport_initialized)
@@ -3060,8 +3019,14 @@ clutter_mozembed_init (ClutterMozEmbed *self)
 
   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
 
-  /* Turn off sync-size (we manually size the texture on allocate) */
-  g_object_set (G_OBJECT (self), "sync-size", FALSE, NULL);
+  /* Turn off sync-size (we manually size the texture on allocate) and turn
+   * on automatic tfp updates.
+   */
+  g_object_set (G_OBJECT (self),
+                "sync-size", FALSE,
+                "automatic-updates", TRUE,
+                "window-redirect-automatic", TRUE,
+                NULL);
 
 #ifdef SUPPORT_IM
   priv->im_enabled = FALSE;
