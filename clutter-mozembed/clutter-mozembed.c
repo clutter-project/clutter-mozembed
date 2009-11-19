@@ -3025,7 +3025,8 @@ clutter_mozembed_init (ClutterMozEmbed *self)
   g_object_set (G_OBJECT (self),
                 "sync-size", FALSE,
                 "automatic-updates", TRUE,
-                "window-redirect-automatic", TRUE,
+                "disable-slicing", TRUE,
+                "filter-quality", CLUTTER_TEXTURE_QUALITY_HIGH,
                 NULL);
 
 #ifdef SUPPORT_IM
