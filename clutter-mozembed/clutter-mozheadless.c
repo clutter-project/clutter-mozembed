@@ -792,10 +792,7 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
            */
           if (!view->mack_source)
             view->mack_source =
-              g_idle_add_full (G_PRIORITY_LOW,
-                               (GSourceFunc)send_mack,
-                               view,
-                               NULL);
+              g_idle_add ((GSourceFunc)send_mack, view);
           else
             g_warning ("Received a motion event before "
                        "sending acknowledgement");
