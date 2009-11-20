@@ -91,6 +91,7 @@ struct _ClutterMozHeadlessPrivate
   GC               buffer_gc;
   gint             surface_width;
   gint             surface_height;
+  gboolean         transparent;
 
   /* Synchronous call variables */
   ClutterMozEmbedCommand  sync_call;
@@ -655,8 +656,8 @@ static void
 clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
 {
   Display *display;
-  int screen, depth;
-  /*XVisualInfo template, visual_info;*/
+  int screen, depth, window_depth;
+  XVisualInfo template, visual_info;
 
   MozHeadless *headless = MOZ_HEADLESS (moz_headless);
   ClutterMozHeadlessPrivate *priv = moz_headless->priv;
@@ -671,16 +672,31 @@ clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
 
   display = clutter_moz_headless_get_default_display ();
   screen = DefaultScreen (display);
-  depth = DefaultDepth (display, screen);
+  window_depth = DefaultDepth (display, screen);
+  depth = priv->transparent ? 32 : window_depth;
 
   if (priv->buffer[0])
-    XFreePixmap (display, (Pixmap)priv->buffer[0]);
+    {
+      XFreePixmap (display, (Pixmap)priv->buffer[0]);
+      priv->buffer[0] = None;
+    }
   if (priv->buffer[1])
-    XFreePixmap (display, (Pixmap)priv->buffer[1]);
+    {
+      XFreePixmap (display, (Pixmap)priv->buffer[1]);
+      priv->buffer[1] = None;
+    }
   if (priv->buffer_gc)
-    XFreeGC (display, priv->buffer_gc);
+    {
+      XFreeGC (display, priv->buffer_gc);
+      priv->buffer_gc = NULL;
+    }
+
+  if ((priv->surface_width <= 0) || (priv->surface_height <= 0))
+    return;
 
   /* FIXME: Error checking */
+
+  /* Create pixmaps */
   priv->buffer[0] = XCreatePixmap (display,
                                   GDK_ROOT_WINDOW (),
                                   priv->surface_width,
@@ -694,7 +710,7 @@ clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
   priv->buffer_gc = XCreateGC (display, priv->buffer[1], 0, NULL);
 
   /* Get the appropriate visual */
-  /*template.screen = screen;
+  template.screen = screen;
   if (XMatchVisualInfo (display,
                         screen,
                         depth,
@@ -705,14 +721,14 @@ clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
       XFreePixmap (display, (Pixmap)priv->buffer[0]);
       priv->buffer[0] = None;
       return;
-    }*/
+    }
 
   moz_headless_set_xsurface (headless,
                              (gpointer)display,
                              (gulong)priv->buffer[0],
-                             /*visual_info.visual,*/
-                             (gpointer)DefaultVisual (display, screen),
+                             visual_info.visual,
                              priv->surface_width, priv->surface_height);
+  moz_headless_set_transparent (headless, priv->transparent);
 }
 
 static void
@@ -771,7 +787,19 @@ process_command (ClutterMozHeadlessView *view, ClutterMozEmbedCommand command)
         {
           gboolean transparent =
             clutter_mozembed_comms_receive_boolean (view->input);
-          moz_headless_set_transparent (headless, transparent);
+
+          if (priv->transparent != transparent)
+            {
+              priv->transparent = transparent;
+
+              /* Trigger a resize to recreate the surfaces in the right
+               * format.
+               */
+              if (priv->waiting_for_ack)
+                priv->pending_resize = TRUE;
+              else if (!priv->pending_resize)
+                clutter_moz_headless_resize (moz_headless);
+            }
           break;
         }
       case CME_COMMAND_MOTION :
