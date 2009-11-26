@@ -698,15 +698,15 @@ clutter_moz_headless_resize (ClutterMozHeadless *moz_headless)
 
   /* Create pixmaps */
   priv->buffer[0] = XCreatePixmap (display,
-                                  GDK_ROOT_WINDOW (),
-                                  priv->surface_width,
-                                  priv->surface_height,
-                                  depth);
+                                   RootWindow (display, screen),
+                                   priv->surface_width,
+                                   priv->surface_height,
+                                   depth);
   priv->buffer[1] = XCreatePixmap (display,
-                                  GDK_ROOT_WINDOW (),
-                                  priv->surface_width,
-                                  priv->surface_height,
-                                  depth);
+                                   RootWindow (display, screen),
+                                   priv->surface_width,
+                                   priv->surface_height,
+                                   depth);
   priv->buffer_gc = XCreateGC (display, priv->buffer[1], 0, NULL);
 
   /* Get the appropriate visual */
