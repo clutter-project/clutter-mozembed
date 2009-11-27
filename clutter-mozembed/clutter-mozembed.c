@@ -2318,8 +2318,11 @@ clutter_mozembed_open_pipes (ClutterMozEmbed *self)
     {
       if (priv->poll_timeout)
         {
-          priv->poll_source = g_idle_add ((GSourceFunc)poll_idle_cb,
-                                          self);
+          priv->poll_source = g_timeout_add_full (G_PRIORITY_HIGH_IDLE,
+                                                  50,
+                                                  (GSourceFunc)poll_idle_cb,
+                                                  self,
+                                                  NULL);
           priv->poll_timeout_source =
             g_timeout_add (priv->poll_timeout,
                            (GSourceFunc)poll_timeout_cb,
