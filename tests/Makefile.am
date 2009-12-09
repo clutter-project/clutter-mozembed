@@ -25,3 +25,5 @@ test_previews_LDADD = $(test_libs)
 #web_browser_SOURCES = web-browser.c web-browser.h
 #web_browser_LDADD = $(test_libs)
 
+EXTRA_DIST = test-mozembed-gtk.c
+
